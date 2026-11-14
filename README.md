@@ -11,6 +11,13 @@
 </p>
 
 <p align="center">
+  <a href="https://acker.cloud/pictr"><strong>acker.cloud/pictr</strong></a> ·
+  <a href="https://acker.cloud/pictr/help">Help</a> ·
+  <a href="https://acker.cloud/pictr/privacy">Privacy</a> ·
+  <a href="https://acker.cloud/pictr/terms">Terms</a>
+</p>
+
+<p align="center">
   <img alt="iOS 26+" src="https://img.shields.io/badge/iOS-26%2B-000000?logo=apple&logoColor=white">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-C0392B?logo=swift&logoColor=white">
   <img alt="SwiftUI and Liquid Glass" src="https://img.shields.io/badge/SwiftUI-Liquid%20Glass-1A1A1A">
@@ -141,10 +148,10 @@ Tools/           App icon renderer, sample photo generator
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep the privacy guarantees intact (no
-networking, no analytics, no automatic deletes). Run the unit tests and a zero-warning device
-build before opening a PR. `CLAUDE.md` holds the project conventions and the mistakes that
-have already been made once.
+Pictr is free and open source, and contributions are welcome. `main` is protected: fork,
+branch, and open a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks and
+ground rules. Please keep the privacy guarantees intact (no networking, no analytics, no
+automatic deletes).
 
 ## License
 

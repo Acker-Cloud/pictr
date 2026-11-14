@@ -88,9 +88,12 @@ regenerate after changes. Set `DEVELOPMENT_TEAM` there to sign with your own tea
 
 ## Shipping contract
 
-Trunk-based: commit to `main`. Unit tests and the zero-warning device build must pass first;
-UI changes also need `DeviceSmokeTests` on a phone. Commit as the GitHub noreply address, never
-a personal email.
+`main` is protected on GitHub: changes from anyone without admin rights arrive as pull
+requests with one approving review, linear history (squash or rebase), resolved
+conversations, and no force-pushes or deletion. The maintainer can push straight to `main`
+through the admin bypass. Either way, unit tests and the zero-warning device build pass first,
+and UI changes also need `DeviceSmokeTests` on a phone. Commit as the GitHub noreply address,
+never a personal email. See `CONTRIBUTING.md`.
 
 ## Method
 

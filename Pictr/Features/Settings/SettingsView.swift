@@ -154,6 +154,27 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        LinkRow("Pictr home page", systemImage: "globe", url: AboutLinks.home)
+                        LinkRow("Help", systemImage: "questionmark.circle.fill", url: AboutLinks.help)
+                        LinkRow("Privacy Policy", systemImage: "hand.raised.fill", url: AboutLinks.privacy)
+                        LinkRow("Terms of Use", systemImage: "doc.text.fill", url: AboutLinks.terms)
+                        LinkRow("Contact support", systemImage: "envelope.fill", url: AboutLinks.support)
+                    } header: {
+                        SectionLabel("Help and legal")
+                    }
+
+                    Section {
+                        LinkRow("Source code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right",
+                                url: AboutLinks.source)
+                        LinkRow("Report an issue", systemImage: "ladybug.fill", url: AboutLinks.issues)
+                        LinkRow("MIT License", systemImage: "checkmark.seal.fill", url: AboutLinks.license)
+                    } header: {
+                        SectionLabel("Free and open source")
+                    } footer: {
+                        Text("Pictr is free and open source under the MIT license. No price, no subscription, no ads, no tracking. Anyone can read the code, build it, and send a fix.")
+                    }
+
+                    Section {
                         LabeledContent {
                             Text(version)
                         } label: {
@@ -244,13 +265,52 @@ private struct AcknowledgementsView: View {
     var body: some View {
         List {
             Section {
+                Text("Pictr is free and open source software, released under the MIT License. Copyright (c) 2026 Zac Acker.")
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                LinkRow("Read the MIT License", systemImage: "checkmark.seal.fill", url: AboutLinks.license)
+            } header: {
+                SectionLabel("Pictr")
+            }
+            .listRowBackground(GlassRow())
+            Section {
                 Text("Geist by Vercel and DM Sans by Colophon Foundry are used under the SIL Open Font License 1.1. The licence texts ship inside the app.")
                     .foregroundStyle(Theme.Palette.textSecondary)
+            } header: {
+                SectionLabel("Fonts")
             }
+            .listRowBackground(GlassRow())
         }
         .font(Theme.Typeface.body)
         .pictrList()
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A settings row that opens a web page or mail in the system app.
+private struct LinkRow: View {
+    let title: String
+    let systemImage: String
+    let url: URL
+
+    init(_ title: String, systemImage: String, url: URL) {
+        self.title = title
+        self.systemImage = systemImage
+        self.url = url
+    }
+
+    var body: some View {
+        Link(destination: url) {
+            HStack {
+                RowLabel(title, systemImage: systemImage)
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityHint("Opens outside Pictr")
     }
 }

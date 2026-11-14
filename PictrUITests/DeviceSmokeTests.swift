@@ -39,6 +39,15 @@ final class DeviceSmokeTests: XCTestCase {
         } else {
             XCTFail("No What Pictr has learned row")
         }
+        // Help, legal and open-source rows are SwiftUI Links: UI tests see them as links.
+        let source = app.links.matching(NSPredicate(format: "label BEGINSWITH 'Source code on GitHub'")).firstMatch
+        for _ in 0..<8 where !source.exists { app.swipeUp() }
+        XCTAssertTrue(source.exists, "Open source links in Settings")
+        for label in ["Pictr home page", "Privacy Policy", "Terms of Use", "Help", "MIT License"] {
+            XCTAssertTrue(app.links.matching(NSPredicate(format: "label BEGINSWITH %@", label)).firstMatch.exists,
+                          "\(label) link in Settings")
+        }
+        sleep(1); shot("settings-about")
         app.buttons["Done"].tap()
 
         // Progress lives in Settings
