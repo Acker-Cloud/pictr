@@ -73,7 +73,7 @@ struct PhotoViewer: View {
         .task { await loadMetadata() }
         .sheet(isPresented: $showsInfo) {
             ViewerInfo(item: current, member: sizes[currentID]) { showsInfo = false }
-                .presentationDetents([.height(330)])
+                .presentationDetents([.height(260)])
                 .presentationBackground(.regularMaterial)
         }
     }
@@ -298,8 +298,6 @@ private struct ViewerInfo: View {
     let member: BucketMember?
     let done: () -> Void
 
-    @Environment(\.openURL) private var openURL
-
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.x3) {
             HStack {
@@ -321,15 +319,6 @@ private struct ViewerInfo: View {
                 row("Size", ByteFormat.string(member.size.bytes) + (member.size.isEstimated ? " (estimated)" : ""))
                 row("Stored", storedText(member.availability))
             }
-            // photos-redirect:// is the only way in; there is no public link to a single asset.
-            Button {
-                if let url = URL(string: "photos-redirect://") { openURL(url) }
-            } label: {
-                Label("Open Photos", systemImage: "photo.on.rectangle")
-                    .frame(maxWidth: .infinity)
-            }
-            .secondaryGlassButton()
-            .padding(.top, Theme.Space.x2)
             Spacer()
         }
         .padding(Theme.Space.x6)
