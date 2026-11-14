@@ -27,7 +27,7 @@ struct VisionTests {
         return await VisionAnalyzer().analyze(image)
     }
 
-    /// Measured on an iPhone 17 Pro: the drawn moon-over-mountains fixtures tag as outdoor,
+    /// Measured on an iPhone: the drawn moon-over-mountains fixtures tag as outdoor,
     /// celestial_body, moon (0.15 to 0.33); the abstract blur fixture gets nothing
     /// above the floor, which is right for an image with no subject.
     @Test func classifierTagsScenesAndSkipsAbstractBlur() async throws {
