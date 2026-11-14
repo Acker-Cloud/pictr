@@ -4,6 +4,7 @@ import SwiftUI
 struct DeckLoaderView: View {
     let title: String
     let load: @Sendable () -> [ReviewItem]
+    var showsQuickSelect = true
 
     @Environment(DecisionsModel.self) private var decisions
     @State private var items: [ReviewItem]?
@@ -29,9 +30,11 @@ struct DeckLoaderView: View {
         .background(PictrBackground())
         .navigationTitle(title)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Quick Select", systemImage: "square.grid.3x3") { showsGrid = true }
-                    .disabled(all.isEmpty)
+            if showsQuickSelect {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Quick Select", systemImage: "square.grid.3x3") { showsGrid = true }
+                        .disabled(all.isEmpty)
+                }
             }
         }
         .navigationDestination(isPresented: $showsGrid) {

@@ -9,6 +9,7 @@ struct SimilarDetailView: View {
     @State private var chosen: Set<String>?
     @State private var thumbnails = ThumbnailProvider()
     @State private var comparing: SimilarGroup?
+    @State private var reviewing = false
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
     private var cellPixels: CGSize { CGSize(width: 130 * displayScale, height: 130 * displayScale) }
@@ -69,6 +70,13 @@ struct SimilarDetailView: View {
         .settingsToolbar()
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: Theme.Space.x2) {
+                Button { reviewing = true } label: {
+                    Label("Review \(groups.flatMap(\.memberIDs).count)", systemImage: "rectangle.stack.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .secondaryGlassButton()
+                .disabled(groups.isEmpty)
+
                 Button {
                     decisions.queue(ids: selected.map(\.id))
                     chosen = nil
@@ -83,6 +91,9 @@ struct SimilarDetailView: View {
                     .foregroundStyle(Theme.Palette.textSecondary)
             }
             .padding(Theme.Space.x4)
+        }
+        .navigationDestination(isPresented: $reviewing) {
+            BucketDeck(title: BucketKind.similar.title, ids: groups.flatMap(\.memberIDs))
         }
         .sheet(item: $comparing) { group in
             CompareView(group: group)

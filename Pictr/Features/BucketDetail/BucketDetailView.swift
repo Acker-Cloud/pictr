@@ -13,6 +13,7 @@ struct BucketDetailView: View {
         nonmutating set { model.selections[kind] = newValue }
     }
     @State private var thumbnails = ThumbnailProvider()
+    @State private var reviewing = false
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
     private var cellPixels: CGSize { CGSize(width: 130 * displayScale, height: 130 * displayScale) }
@@ -63,12 +64,22 @@ struct BucketDetailView: View {
             }
         }
         .safeAreaInset(edge: .bottom) { deleteBar }
+        .navigationDestination(isPresented: $reviewing) {
+            BucketDeck(title: kind.title, ids: bucket.members.map(\.id))
+        }
         .onAppear { thumbnails.prepare(ids: bucket.members.map(\.id), targetSize: cellPixels) }
         .onDisappear { thumbnails.stop() }
     }
 
     private var deleteBar: some View {
         VStack(spacing: Theme.Space.x2) {
+            Button { reviewing = true } label: {
+                Label("Review \(bucket.count)", systemImage: "rectangle.stack.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .secondaryGlassButton()
+            .disabled(bucket.members.isEmpty)
+
             Button {
                 decisions.queue(ids: selected.map(\.id))
                 chosen = []
@@ -94,5 +105,19 @@ struct BucketDetailView: View {
         var set = chosen ?? []
         if set.contains(id) { set.remove(id) } else { set.insert(id) }
         chosen = set
+    }
+}
+
+/// Swipe deck over a suggestion's photos, in the suggestion's order.
+struct BucketDeck: View {
+    let title: String
+    let ids: [String]
+
+    @Environment(LibraryModel.self) private var model
+
+    var body: some View {
+        let client = model.client
+        let ids = ids
+        DeckLoaderView(title: title, load: { client.reviewItems(ids: ids) }, showsQuickSelect: false)
     }
 }
