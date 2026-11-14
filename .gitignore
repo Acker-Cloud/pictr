@@ -1,0 +1,16 @@
+
+# build loop: keep artifacts, drop run output
+.buildloop/tla/logs/
+.buildloop/tla/verdict.json
+.buildloop/**/states/
+
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Claude Code: machine-specific hooks and permissions
+.claude/settings.local.json

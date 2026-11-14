@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pictr shows you photos from this day in past years and helps you find screenshots, extra burst frames and large videos you might want to delete. Nothing leaves your device, and nothing is deleted without your confirmation.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Geist.ttf</string>
+		<string>DMSans.ttf</string>
+	</array>
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
+</dict>
+</plist>

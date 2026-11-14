@@ -1,0 +1,75 @@
+name: Pictr
+options:
+  bundleIdPrefix: cloud.acker
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES"
+    GCC_TREAT_WARNINGS_AS_ERRORS: "YES"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    GENERATE_INFOPLIST_FILE: "YES"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "E97LU2X2VL"
+
+targets:
+  Pictr:
+    type: application
+    platform: iOS
+    sources:
+      - Pictr
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr
+        INFOPLIST_FILE: Pictr/App/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Pictr
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Ember AppIcon-Noir AppIcon-Classic"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown"
+
+  PictrTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - PictrTests
+    dependencies:
+      - target: Pictr
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Pictr.app/Pictr"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  PictrUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - PictrUITests
+    dependencies:
+      - target: Pictr
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr.uitests
+        TEST_TARGET_NAME: Pictr
+
+schemes:
+  Pictr:
+    build:
+      targets:
+        Pictr: all
+        PictrTests: [test]
+        PictrUITests: [test]
+    test:
+      targets:
+        - PictrTests
+        - PictrUITests
