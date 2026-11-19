@@ -3,6 +3,7 @@ import Foundation
 enum BucketKind: String, Sendable, CaseIterable, Identifiable {
     case maybeDelete
     case similar
+    case duplicates
     case screenshots
     case burstExtras
     case blurry
@@ -17,6 +18,7 @@ enum BucketKind: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .maybeDelete: "Maybe Delete"
         case .similar: "Similar shots"
+        case .duplicates: "Duplicates"
         case .screenshots: "Screenshots"
         case .burstExtras: "Burst extras"
         case .blurry: "Blurry"
@@ -31,7 +33,7 @@ enum BucketKind: String, Sendable, CaseIterable, Identifiable {
     var needsAnalysis: Bool {
         switch self {
         case .maybeDelete, .similar, .blurry, .lowQuality, .utility: true
-        case .screenshots, .burstExtras, .largeVideos, .screenRecordings: false
+        case .duplicates, .screenshots, .burstExtras, .largeVideos, .screenRecordings: false
         }
     }
 
@@ -39,6 +41,7 @@ enum BucketKind: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .maybeDelete: "Picked by what Pictr has learned from your swipes. Each shows its main reason. Suggestions only change when you update them."
         case .similar: "Near-identical shots taken close together. The best of each set is kept and can't be selected."
+        case .duplicates: "Exact copies: the same size, the same second, the same file size. One of each is kept and can't be selected."
         case .screenshots: "Screen captures."
         case .burstExtras: "Burst frames that were not picked. The picked frame stays."
         case .blurry: "Photos that scored soft on this iPhone's sharpness check. Scores are estimates, so look before you delete."
@@ -53,6 +56,7 @@ enum BucketKind: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .maybeDelete: "questionmark.square.dashed"
         case .similar: "square.on.square"
+        case .duplicates: "plus.square.on.square"
         case .screenshots: "camera.viewfinder"
         case .burstExtras: "square.stack.3d.down.right"
         case .blurry: "camera.aperture"
@@ -83,6 +87,7 @@ struct Bucket: Sendable, Identifiable, Equatable {
 struct BucketSet: Sendable, Equatable {
     var buckets: [Bucket]
     var similarGroups: [SimilarGroup] = []
+    var duplicateGroups: [SimilarGroup] = []
     /// Why each Maybe Delete member was suggested.
     var reasons: [String: String] = [:]
 
@@ -106,17 +111,35 @@ struct BucketSet: Sendable, Equatable {
 }
 
 extension BucketSet {
-    /// Removes assets the user already decided on (kept or queued).
-    func excluding(_ ids: Set<String>) -> BucketSet {
+    /// Removes assets the user already decided on (kept or queued). A group whose
+    /// keepers are all queued no longer protects anything, so it and its extras drop out
+    /// rather than stay preselected beside a keeper that is going.
+    func excluding(_ ids: Set<String>, queued: Set<String> = []) -> BucketSet {
         guard !ids.isEmpty else { return self }
-        let groups = similarGroups.compactMap { group -> SimilarGroup? in
-            let members = group.memberIDs.filter { !ids.contains($0) || group.keeperIDs.contains($0) }
-            let extras = members.filter { !group.keeperIDs.contains($0) }
-            return extras.isEmpty ? nil : SimilarGroup(memberIDs: members, keeperIDs: group.keeperIDs)
+        func remaining(_ groups: [SimilarGroup]) -> (groups: [SimilarGroup], orphans: Set<String>) {
+            var orphans = Set<String>()
+            let kept = groups.compactMap { group -> SimilarGroup? in
+                if !group.keeperIDs.isEmpty && group.keeperIDs.isSubset(of: queued) {
+                    orphans.formUnion(group.extraIDs)
+                    return nil
+                }
+                let members = group.memberIDs.filter { !ids.contains($0) || group.keeperIDs.contains($0) }
+                let extras = members.filter { !group.keeperIDs.contains($0) }
+                return extras.isEmpty ? nil : SimilarGroup(memberIDs: members, keeperIDs: group.keeperIDs)
+            }
+            return (kept, orphans)
         }
+        let similar = remaining(similarGroups)
+        let duplicates = remaining(duplicateGroups)
         return BucketSet(
-            buckets: buckets.map { Bucket(kind: $0.kind, members: $0.members.filter { !ids.contains($0.id) }) },
-            similarGroups: groups,
+            buckets: buckets.map { bucket in
+                let orphans = bucket.kind == .similar ? similar.orphans
+                    : bucket.kind == .duplicates ? duplicates.orphans : []
+                return Bucket(kind: bucket.kind,
+                              members: bucket.members.filter { !ids.contains($0.id) && !orphans.contains($0.id) })
+            },
+            similarGroups: similar.groups,
+            duplicateGroups: duplicates.groups,
             reasons: reasons
         )
     }

@@ -18,7 +18,7 @@ struct BucketDetailView: View {
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
     private var cellPixels: CGSize { CGSize(width: 130 * displayScale, height: 130 * displayScale) }
 
-    private var bucket: Bucket { model.buckets.excluding(decisions.book.decidedIDs)[kind] }
+    private var bucket: Bucket { model.buckets.excluding(decisions.book.decidedIDs, queued: decisions.book.queuedIDs)[kind] }
     private func isSelected(_ id: String) -> Bool { chosen?.contains(id) ?? false }
     private var selected: [BucketMember] { bucket.members.filter { isSelected($0.id) } }
     private var allSelected: Bool { !bucket.members.isEmpty && selected.count == bucket.members.count }

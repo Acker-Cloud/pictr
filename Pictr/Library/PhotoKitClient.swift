@@ -198,7 +198,14 @@ final class PhotoKitClient: NSObject, PhotoLibraryClient, PHPhotoLibraryChangeOb
 
     // MARK: Delete
 
+    enum AssetError: Error {
+        case notFound
+    }
+
     func setFavorite(_ isFavorite: Bool, id: String) async throws {
+        // A photo deleted elsewhere would otherwise "succeed" with nothing changed.
+        guard PHAsset.fetchAssets(withLocalIdentifiers: [id], options: Self.idFetchOptions()).firstObject != nil
+        else { throw AssetError.notFound }
         try await PHPhotoLibrary.shared().performChanges {
             guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: Self.idFetchOptions()).firstObject
             else { return }
@@ -229,6 +236,49 @@ final class PhotoKitClient: NSObject, PhotoLibraryClient, PHPhotoLibraryChangeOb
         } catch {
             if Self.isUserCancel(error) { return .cancelled }
             throw error
+        }
+    }
+
+    // MARK: Share
+
+    func exportOriginal(id: String) async throws -> URL {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: Self.idFetchOptions()).firstObject
+        else { throw AssetError.notFound }
+        let resources = PHAssetResource.assetResources(for: asset)
+        let isVideo = asset.mediaType == .video
+        let original = resources.first { $0.type == (isVideo ? .video : .photo) }
+        let edited = resources.first { $0.type == (isVideo ? .fullSizeVideo : .fullSizePhoto) }
+        guard let resource = edited ?? original ?? resources.first else { throw AssetError.notFound }
+
+        // The edit is called FullSizeRender; give it the original's name with the edit's extension.
+        var name = resource.originalFilename
+        if let original, resource !== original {
+            let stem = (original.originalFilename as NSString).deletingPathExtension
+            name = stem + "." + (resource.originalFilename as NSString).pathExtension
+        }
+
+        let root = FileManager.default.temporaryDirectory.appending(path: "Share", directoryHint: .isDirectory)
+        Self.removeOldExports(in: root)
+        let folder = root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: name)
+
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+        try await PHAssetResourceManager.default().writeData(for: resource, toFile: url, options: options)
+        return url
+    }
+
+    /// Drops exports from earlier shares. Recent ones stay, since a share sheet may still
+    /// be reading them or another export may be writing.
+    private static func removeOldExports(in root: URL, olderThan age: TimeInterval = 10 * 60) {
+        let manager = FileManager.default
+        guard let folders = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])
+        else { return }
+        let cutoff = Date.now.addingTimeInterval(-age)
+        for folder in folders {
+            let created = (try? folder.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
+            if created < cutoff { try? manager.removeItem(at: folder) }
         }
     }
 

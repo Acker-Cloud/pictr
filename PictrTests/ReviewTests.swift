@@ -37,6 +37,37 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         #expect(OnThisDay.yearsAgo(photo, from: day(2026, 11, 13), calendar: utc) == 1)
     }
 
+    @Test func weekWindowsCentreOnTheDate() {
+        let windows = OnThisDay.windows(on: day(2026, 11, 13), earliestYear: 2024, range: .week, calendar: utc)
+        #expect(windows.map(\.start) == [day(2025, 11, 10), day(2024, 11, 10)])
+        #expect(windows.allSatisfy { $0.duration == 7 * 86_400 })
+    }
+
+    @Test func weekAroundLeapDayExistsInEveryYear() {
+        // 2027 has no Feb 29, so its week centres on Mar 1.
+        let windows = OnThisDay.windows(on: day(2028, 2, 29), earliestYear: 2026, range: .week, calendar: utc)
+        #expect(windows.map(\.start) == [day(2027, 2, 26), day(2026, 2, 26)])
+    }
+
+    @Test func yearsAgoFollowsTheWindowAcrossNewYear() {
+        // In week mode, Jan 1 2027 shows Dec 29 2025 to Jan 4 2026 as one year ago.
+        #expect(OnThisDay.yearsAgo(day(2025, 12, 30), from: day(2027, 1, 1), calendar: utc) == 1)
+        #expect(OnThisDay.yearsAgo(day(2023, 11, 13), from: day(2026, 11, 13), calendar: utc) == 3)
+        #expect(OnThisDay.yearsAgo(day(2026, 6, 1), from: day(2026, 11, 13), calendar: utc) == 0)
+        // Whole years, not rounded: half a year is 0, a year and a half is 1.
+        #expect(OnThisDay.yearsAgo(day(2026, 5, 1), from: day(2026, 11, 13), calendar: utc) == 0)
+        #expect(OnThisDay.yearsAgo(day(2025, 5, 1), from: day(2026, 11, 13), calendar: utc) == 1)
+        // The far edge of a week window still reads one year.
+        #expect(OnThisDay.yearsAgo(day(2025, 11, 16), from: day(2026, 11, 13), calendar: utc) == 1)
+    }
+
+    @Test func weekNearNewYearReachesTheEarliestPhoto() {
+        // The earliest photo is Jan 1 2025; Dec 30 2025's week a year back holds it.
+        let windows = OnThisDay.windows(on: day(2025, 12, 30), earliestYear: 2025, range: .week, calendar: utc)
+        #expect(windows.map(\.start) == [day(2024, 12, 27)])
+        #expect(OnThisDay.windows(on: day(2025, 12, 30), earliestYear: 2025, calendar: utc).isEmpty)
+    }
+
     @Test func monthKeyIntervalAndOrdering() {
         let key = MonthKey(day(2024, 2, 10), calendar: utc)
         #expect(key == MonthKey(year: 2024, month: 2))
@@ -55,6 +86,17 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         let undone = session.undo()
         #expect(undone == .init(item: item("b"), decision: .trash))
         #expect(session.current?.id == "b")
+    }
+
+    @Test func favoriteStepCountsAsKeptAndUndoesInOrder() {
+        var session = ReviewSession(items: [item("a"), item("b")])
+        session.decide(.keep, favorited: true)
+        session.decide(.keep)
+        #expect(session.keptCount == 2)
+        #expect(session.favoritedCount == 1)
+        #expect(session.undo()?.favorited == false)
+        #expect(session.undo() == .init(item: item("a"), decision: .keep, favorited: true))
+        #expect(session.favoritedCount == 0)
     }
 
     @Test func finishesAfterLastItem() {

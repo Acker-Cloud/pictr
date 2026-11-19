@@ -23,6 +23,7 @@ private final class FakeClient: PhotoLibraryClient, @unchecked Sendable {
     func assetIndex() -> [AssetStamp] { [] }
     func members(for ids: [String]) -> [BucketMember] { [] }
     func analysisImage(for id: String, maxPixels: Int) -> CGImage? { nil }
+    func exportOriginal(id: String) async throws -> URL { throw CancellationError() }
 }
 
 private func exact(_ bytes: Int64) -> [ResourceRecord] {

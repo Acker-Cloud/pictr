@@ -12,15 +12,18 @@ final class DecisionsModel {
 
     init(fileURL: URL? = DecisionsModel.defaultURL) {
         self.fileURL = fileURL
-        if let fileURL, let data = try? Data(contentsOf: fileURL),
-           let book = try? JSONDecoder().decode(DecisionBook.self, from: data) {
-            self.book = book
-        } else {
-            self.book = DecisionBook()
-        }
+        self.book = Self.savedBook(at: fileURL)
     }
 
-    static var defaultURL: URL? {
+    /// The book as last saved, for readers outside the main actor (App Intents).
+    nonisolated static func savedBook(at fileURL: URL? = DecisionsModel.defaultURL) -> DecisionBook {
+        guard let fileURL, let data = try? Data(contentsOf: fileURL),
+              let book = try? JSONDecoder().decode(DecisionBook.self, from: data)
+        else { return DecisionBook() }
+        return book
+    }
+
+    nonisolated static var defaultURL: URL? {
         try? FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appending(path: "decisions.json")

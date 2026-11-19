@@ -4,7 +4,7 @@ struct BucketListView: View {
     @Environment(LibraryModel.self) private var model
     @Environment(DecisionsModel.self) private var decisions
 
-    private var buckets: BucketSet { model.buckets.excluding(decisions.book.decidedIDs) }
+    private var buckets: BucketSet { model.buckets.excluding(decisions.book.decidedIDs, queued: decisions.book.queuedIDs) }
     @Environment(\.scenePhase) private var scenePhase
 
     @Environment(\.displayScale) private var displayScale
@@ -19,6 +19,32 @@ struct BucketListView: View {
                     }
 
                     Panel { header }
+
+                    NavigationLink {
+                        InsightsView()
+                    } label: {
+                        Panel {
+                            HStack(spacing: Theme.Space.x3) {
+                                IconTile(systemName: "chart.pie.fill", size: 36)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("What's taking space")
+                                        .font(Theme.Typeface.headline)
+                                        .foregroundStyle(Theme.Palette.textPrimary)
+                                    Text("By kind and year, the largest items, and what's only in iCloud.")
+                                        .font(Theme.Typeface.caption)
+                                        .foregroundStyle(Theme.Palette.textSecondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Theme.Palette.textSecondary)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityIdentifier("insights-link")
 
                     if case let .scanning(progress) = model.phase {
                         Panel {
@@ -55,8 +81,8 @@ struct BucketListView: View {
             .background(PictrBackground())
             .pageHeader("Cleanup")
             .navigationDestination(for: BucketKind.self) { kind in
-                if kind == .similar {
-                    SimilarDetailView()
+                if kind == .similar || kind == .duplicates {
+                    SimilarDetailView(kind: kind)
                 } else {
                     BucketDetailView(kind: kind)
                 }

@@ -72,6 +72,13 @@ extension DecisionBook {
         }
     }
 
+    /// Confirmed deletes as CSV: one row per batch, ISO 8601 dates in UTC.
+    func historyCSV() -> String {
+        applied.reduce(into: "date,items,bytes\n") { csv, entry in
+            csv += "\(entry.date.formatted(.iso8601)),\(entry.count),\(entry.bytes)\n"
+        }
+    }
+
     var planProgress: Int64 {
         guard let plan else { return 0 }
         return applied.filter { $0.date >= plan.startedAt }.reduce(0) { $0 + $1.bytes }

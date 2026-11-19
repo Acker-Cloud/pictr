@@ -116,6 +116,14 @@ struct PhotoViewer: View {
         return GlassEffectContainer(spacing: Theme.Space.x3) {
             HStack(spacing: Theme.Space.x3) {
                 barButton("Info", icon: "info.circle") { showsInfo = true }
+                ShareLink(item: SharedPhoto(id: id, isVideo: current?.mediaKind == .video, client: library.client),
+                          preview: SharePreview(current?.mediaKind == .video ? "Video" : "Photo",
+                                                image: Image(systemName: current?.mediaKind == .video ? "video" : "photo"))) {
+                    Label("Share", systemImage: "square.and.arrow.up").labelStyle(.iconOnly).font(.title3)
+                        .frame(width: 52, height: 52)
+                }
+                .buttonStyle(.glass).buttonBorderShape(.circle)
+                .accessibilityLabel("Share")
                 barButton(isFavorite ? "Unfavorite" : "Favorite", icon: isFavorite ? "heart.fill" : "heart") {
                     Task { await toggleFavorite() }
                 }

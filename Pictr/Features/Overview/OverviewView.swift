@@ -1,5 +1,6 @@
 import Charts
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum Prefs {
     static let dailyGoal = "dailyGoal"
@@ -9,7 +10,14 @@ enum Prefs {
     static let batchSizes = [25, 50, 100, 0]
     static let planTargets: [Int64] = [100_000_000, 500_000_000, 1_000_000_000, 5_000_000_000]
 
+    static let rangeKey = "onThisDay.range"
+
     static func batchLabel(_ size: Int) -> String { size == 0 ? "All photos" : "\(size) photos" }
+
+    /// The saved On This Day range, for code outside a view.
+    static var onThisDayRange: OnThisDayRange {
+        UserDefaults.standard.string(forKey: rangeKey).flatMap(OnThisDayRange.init(rawValue:)) ?? .day
+    }
 }
 
 /// Progress: today against the daily goal, the last two weeks, totals,
@@ -41,6 +49,13 @@ struct OverviewView: View {
                 }
                 Section {
                     history
+                    if !book.applied.isEmpty {
+                        ShareLink(item: HistoryExport(csv: book.historyCSV()),
+                                  preview: SharePreview("Pictr cleanup history")) {
+                            RowLabel("Export history as CSV", systemImage: "square.and.arrow.up")
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                        }
+                    }
                 } header: {
                     SectionLabel("History")
                 }
@@ -179,6 +194,19 @@ struct OverviewView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+        }
+    }
+}
+
+/// Cleanup history as a CSV file, written when the share sheet asks for it.
+private struct HistoryExport: Transferable {
+    let csv: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .commaSeparatedText) { export in
+            let url = FileManager.default.temporaryDirectory.appending(path: "Pictr cleanup history.csv")
+            try Data(export.csv.utf8).write(to: url, options: .atomic)
+            return SentTransferredFile(url)
         }
     }
 }

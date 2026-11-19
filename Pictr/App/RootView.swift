@@ -5,17 +5,20 @@ struct RootView: View {
     @Environment(DecisionsModel.self) private var decisions
     @Environment(ViewerPresenter.self) private var viewer
     @Environment(DailyReminder.self) private var reminder
+    @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(Prefs.rangeKey) private var range: OnThisDayRange = .day
 
     var body: some View {
+        @Bindable var router = router
         Group {
             switch model.authState {
             case .authorized, .limited:
-                TabView {
-                    Tab("Today", systemImage: "sun.horizon.fill") { TodayView() }
-                    Tab("Lookback", systemImage: "clock.arrow.circlepath") { LookbackView() }
-                    Tab("Cleanup", systemImage: "wand.and.sparkles") { BucketListView() }
-                    Tab("Ready to Delete", systemImage: "trash.fill") { ReadyToDeleteView() }
+                TabView(selection: $router.tab) {
+                    Tab("Today", systemImage: "sun.horizon.fill", value: AppTab.today) { TodayView() }
+                    Tab("Lookback", systemImage: "clock.arrow.circlepath", value: AppTab.lookback) { LookbackView() }
+                    Tab("Cleanup", systemImage: "wand.and.sparkles", value: AppTab.cleanup) { BucketListView() }
+                    Tab("Ready to Delete", systemImage: "trash.fill", value: AppTab.queue) { ReadyToDeleteView() }
                         .badge(decisions.queueCount)
                 }
                 .tabBarMinimizeBehavior(.onScrollDown)
@@ -33,6 +36,11 @@ struct RootView: View {
                 await reminder.refreshPermission()
                 await reminder.reschedule(client: model.client, decided: decisions.book.decidedIDs)
             }
+        }
+        .onChange(of: range) {
+            // Today's "Show this week" and Settings both change the range.
+            guard reminder.isEnabled else { return }
+            Task { await reminder.reschedule(client: model.client, decided: decisions.book.decidedIDs) }
         }
         .fullScreenCover(item: Binding(get: { viewer.request }, set: { viewer.request = $0 })) { request in
             PhotoViewer(request: request)

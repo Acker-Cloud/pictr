@@ -4,12 +4,15 @@ import SwiftUI
 struct TodayView: View {
     @Environment(LibraryModel.self) private var library
     @Environment(DecisionsModel.self) private var decisions
+    @Environment(AppRouter.self) private var router
     @State private var items: [ReviewItem]?
+    @State private var showsShuffle = false
     @State private var day = Calendar.current.startOfDay(for: .now)
     @State private var thumbnails = ThumbnailProvider()
     @Environment(\.displayScale) private var displayScale
     @AppStorage(Prefs.dailyGoal) private var dailyGoal = 50
     @AppStorage(Prefs.batchSize) private var batchSize = 0
+    @AppStorage(Prefs.rangeKey) private var range: OnThisDayRange = .day
 
     private struct YearGroup: Identifiable {
         var yearsAgo: Int
@@ -36,9 +39,11 @@ struct TodayView: View {
                         ProgressView().frame(maxWidth: .infinity).padding(.top, Theme.Space.x12)
                     } else if items?.isEmpty == true {
                         empty
+                        shuffleCard
                     } else {
                         hero
                         yearStrip
+                        shuffleCard
                     }
                 }
                 .padding(.horizontal, Theme.Space.x5)
@@ -47,6 +52,13 @@ struct TodayView: View {
             .background(PictrBackground())
             .refreshable { await load() }
             .task { if items == nil { await load() } }
+            .onChange(of: range) { Task { await load() } }
+            .onChange(of: router.pendingShuffle, initial: true) { _, pending in
+                guard pending else { return }
+                router.pendingShuffle = false
+                showsShuffle = true
+            }
+            .navigationDestination(isPresented: $showsShuffle) { shuffleDeck }
             .pageHeader(day.formatted(.dateTime.month(.wide).day()),
                         accessibilityTitle: "On this day, \(day.formatted(.dateTime.month(.wide).day()))")
         }
@@ -120,7 +132,7 @@ struct TodayView: View {
                     .padding(Theme.Space.x5)
             } else {
                 NavigationLink {
-                    DeckView(title: "On this day",
+                    DeckView(title: range == .week ? "This week" : "On this day",
                              items: batchSize > 0 ? Array(undecided.prefix(batchSize)) : undecided,
                              today: day)
                 } label: {
@@ -160,11 +172,54 @@ struct TodayView: View {
     private var empty: some View {
         VStack(alignment: .leading, spacing: Theme.Space.x4) {
             PictrMark(size: 96)
-            Text("Nothing from this date yet. Open Lookback to sweep your library, or check back tomorrow.")
+            Text(range == .day
+                 ? "Nothing from this date yet. Look at the whole week, open Lookback, or check back tomorrow."
+                 : "Nothing from this week yet. Open Lookback to sweep your library, or check back tomorrow.")
                 .font(Theme.Typeface.body)
                 .foregroundStyle(Theme.Palette.textSecondary)
+            if range == .day {
+                Button { range = .week } label: {
+                    Label("Show this week", systemImage: "calendar")
+                }
+                .secondaryGlassButton()
+            }
         }
         .padding(.top, Theme.Space.x8)
+    }
+
+    /// A random deck from any year, for days when the date has little to show.
+    private var shuffleCard: some View {
+        Panel {
+            HStack(spacing: Theme.Space.x4) {
+                IconTile(systemName: "shuffle", size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shuffle")
+                        .font(Theme.Typeface.headline)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("\(shuffleCount) random photos you haven't reviewed, from any year.")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+                Spacer(minLength: 0)
+                Button { showsShuffle = true } label: {
+                    Text("Start")
+                }
+                .secondaryGlassButton()
+                .accessibilityLabel("Start Shuffle")
+            }
+        }
+    }
+
+    private var shuffleCount: Int { batchSize > 0 ? batchSize : Shuffle.defaultCount }
+
+    private var shuffleDeck: some View {
+        let client = library.client
+        let decided = decisions.book.decidedIDs
+        let count = shuffleCount
+        return DeckLoaderView(title: "Shuffle", load: {
+            let ids = Shuffle.pick(client.assetIndex().map(\.id), excluding: decided, count: count)
+            return client.reviewItems(ids: ids)
+        }, showsQuickSelect: false)
     }
 
     private func yearTitle(_ yearsAgo: Int) -> String {
@@ -174,16 +229,19 @@ struct TodayView: View {
     private var photosPill: String? {
         guard let items, !items.isEmpty else { return nil }
         let photos = items.count == 1 ? "1 photo" : "\(items.count) photos"
-        return "\(photos) · \(years.count == 1 ? "1 year" : "\(years.count) years")"
+        let span = years.count == 1 ? "1 year" : "\(years.count) years"
+        return range == .week ? "\(photos) this week · \(span)" : "\(photos) · \(span)"
     }
 
     private func load() async {
         day = Calendar.current.startOfDay(for: .now)
         let client = library.client
         let today = day
+        let range = range
         items = await Task.detached(priority: .userInitiated) {
             guard let earliest = client.earliestAssetDate() else { return [ReviewItem]() }
-            let windows = OnThisDay.windows(on: today, earliestYear: Calendar.current.component(.year, from: earliest))
+            let windows = OnThisDay.windows(on: today, earliestYear: Calendar.current.component(.year, from: earliest),
+                                            range: range)
             // Newest year first, chronological within a day.
             return client.reviewItems(in: windows).sorted {
                 let l = $0.creationDate ?? .distantPast, r = $1.creationDate ?? .distantPast

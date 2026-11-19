@@ -11,12 +11,12 @@ enum ReminderPlan {
 
     /// Days after `today` (tomorrow first) that have photos from earlier years.
     static func entries(from today: Date, days: Int, hour: Int, minute: Int, earliestYear: Int,
-                        calendar: Calendar = .current,
+                        range: OnThisDayRange = .day, calendar: Calendar = .current,
                         count: ([DateInterval]) -> Int) -> [Entry] {
         let start = calendar.startOfDay(for: today)
         return (1...max(days, 1)).compactMap { offset -> Entry? in
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
-            let windows = OnThisDay.windows(on: date, earliestYear: earliestYear, calendar: calendar)
+            let windows = OnThisDay.windows(on: date, earliestYear: earliestYear, range: range, calendar: calendar)
             guard !windows.isEmpty else { return nil }
             let photos = count(windows)
             guard photos > 0 else { return nil }
@@ -27,10 +27,10 @@ enum ReminderPlan {
         }
     }
 
-    static func body(photoCount: Int) -> String {
+    static func body(photoCount: Int, range: OnThisDayRange = .day) -> String {
         photoCount == 1
-            ? "1 photo from this day in past years is waiting."
-            : "\(photoCount) photos from this day in past years are waiting."
+            ? "1 photo from \(range.phrase) in past years is waiting."
+            : "\(photoCount) photos from \(range.phrase) in past years are waiting."
     }
 }
 
@@ -83,10 +83,12 @@ final class DailyReminder {
         guard isEnabled else { return }
 
         let hour = minutes / 60, minute = minutes % 60, horizon = Self.horizon
+        let range = Prefs.onThisDayRange
         let entries = await Task.detached(priority: .utility) { () -> [ReminderPlan.Entry] in
             guard let earliest = client.earliestAssetDate() else { return [] }
             return ReminderPlan.entries(from: .now, days: horizon, hour: hour, minute: minute,
-                                        earliestYear: Calendar.current.component(.year, from: earliest)) { windows in
+                                        earliestYear: Calendar.current.component(.year, from: earliest),
+                                        range: range) { windows in
                 client.reviewItems(in: windows).filter { !decided.contains($0.id) }.count
             }
         }.value
@@ -94,7 +96,7 @@ final class DailyReminder {
         for entry in entries {
             let content = UNMutableNotificationContent()
             content.title = "On this day"
-            content.body = ReminderPlan.body(photoCount: entry.photoCount)
+            content.body = ReminderPlan.body(photoCount: entry.photoCount, range: range)
             content.sound = .default
             content.threadIdentifier = "onthisday"
             let trigger = UNCalendarNotificationTrigger(dateMatching: entry.fireDate, repeats: false)

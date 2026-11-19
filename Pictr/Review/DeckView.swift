@@ -10,7 +10,7 @@ enum DeckMode: Equatable {
 }
 
 /// Swipe deck: right keeps, left queues for deletion (or, in training, marks
-/// "would delete"), undo walks back.
+/// "would delete"), up keeps and favorites, undo walks back.
 struct DeckView: View {
     let title: String
     let items: [ReviewItem]
@@ -18,13 +18,20 @@ struct DeckView: View {
     var mode: DeckMode = .decide
 
     @Environment(DecisionsModel.self) private var decisions
+    @Environment(LibraryModel.self) private var library
     @Environment(ViewerPresenter.self) private var viewer
     @Environment(\.displayScale) private var displayScale
     @State private var session: ReviewSession
     @State private var undoRecords: [DecisionBook.Record?] = []
     @State private var undoTaste: [Decision?] = []
     @State private var drag: CGSize = .zero
-    @State private var notice: String?
+    @State private var notice: Notice?
+    /// True while a card flies off or a favorite is being written. Every action waits,
+    /// so a fast second tap can't land on the card that is leaving.
+    @State private var isBusy = false
+    /// Favorites made or confirmed in this deck. The items' own flags were read at load
+    /// and go stale, and favorites must never be queued.
+    @State private var favoritedHere: Set<String> = []
     @State private var loader = ImageLoader()
     @State private var thumbnails = ThumbnailProvider()
     @State private var isMuted = true
@@ -32,9 +39,15 @@ struct DeckView: View {
     @State private var lastDecision: Decision = .keep
     @State private var protectTick = 0
 
-    /// -1 past the delete threshold, 1 past keep, 0 between. Drives a selection tick.
+    private struct Notice: Equatable {
+        var text: String
+        var systemImage: String
+    }
+
+    /// -1 past the delete threshold, 1 past keep, 2 past favorite, 0 between. Drives a selection tick.
     private var thresholdZone: Int {
-        drag.width > Self.swipeThreshold ? 1 : drag.width < -Self.swipeThreshold ? -1 : 0
+        if mode == .decide, PhotoCard.isFavoriteDrag(drag), -drag.height > Self.swipeThreshold { return 2 }
+        return drag.width > Self.swipeThreshold ? 1 : drag.width < -Self.swipeThreshold ? -1 : 0
     }
 
     private static let swipeThreshold: CGFloat = 110
@@ -65,11 +78,23 @@ struct DeckView: View {
         }
         .navigationTitle(title)
         .settingsToolbar()
+        .toolbar {
+            if let item = session.current, mode == .decide {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: SharedPhoto(id: item.id, isVideo: item.mediaKind == .video, client: library.client),
+                              preview: SharePreview(item.mediaKind == .video ? "Video" : "Photo",
+                                                    image: Image(systemName: item.mediaKind == .video ? "video" : "photo"))) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
+                }
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .overlay(alignment: .top) {
             if let notice {
-                Label(notice, systemImage: "heart.fill")
+                Label(notice.text, systemImage: notice.systemImage)
                     .font(Theme.Typeface.captionMedium)
                     .foregroundStyle(Theme.Palette.textPrimary)
                     .padding(.horizontal, Theme.Space.x4).padding(.vertical, Theme.Space.x3)
@@ -117,6 +142,10 @@ struct DeckView: View {
             Label("\(session.trashedCount)", systemImage: "trash.fill")
                 .font(Theme.Typeface.number)
                 .labelStyle(TintedIconLabelStyle(tint: Theme.Palette.accent))
+            if session.favoritedCount > 0 {
+                Label("\(session.favoritedCount)", systemImage: "heart.fill")
+                    .font(Theme.Typeface.number)
+            }
         }
         .foregroundStyle(Theme.Palette.textPrimary)
         .padding(.horizontal, Theme.Space.x4).padding(.vertical, Theme.Space.x2)
@@ -126,25 +155,31 @@ struct DeckView: View {
 
     private func card(for item: ReviewItem) -> some View {
         PhotoCard(item: item, today: today, loader: loader, targetSize: targetSize, drag: drag, isMuted: $isMuted,
-                  deleteLabel: mode == .train ? "Would delete" : "Delete")
+                  deleteLabel: mode == .train ? "Would delete" : "Delete", allowsFavorite: mode == .decide)
             .id(item.id)
             .onTapGesture {
                 if item.mediaKind == .video { isMuted.toggle() } else { viewer.open([item.id], showsActions: false) }
             }
-            .offset(x: drag.width, y: drag.height * 0.2)
+            .offset(x: drag.width, y: drag.height * (mode == .decide && drag.height < 0 ? 0.7 : 0.2))
             .rotationEffect(.degrees(Double(drag.width / 22)))
             .gesture(
                 DragGesture()
                     .onChanged { drag = $0.translation }
                     .onEnded { value in
                         let x = value.predictedEndTranslation.width
-                        if x > Self.swipeThreshold { decide(.keep) }
+                        let y = value.predictedEndTranslation.height
+                        if mode == .decide, PhotoCard.isFavoriteDrag(value.translation), y < -Self.swipeThreshold {
+                            favorite()
+                        }
+                        else if x > Self.swipeThreshold { decide(.keep) }
                         else if x < -Self.swipeThreshold { decide(.trash) }
                         else { withAnimation(.spring) { drag = .zero } }
                     }
             )
+            .disabled(isBusy)
             .accessibilityAction(named: "Keep") { decide(.keep) }
             .accessibilityAction(named: "Delete") { decide(.trash) }
+            .accessibilityAction(named: "Keep and favorite") { if mode == .decide { favorite() } }
             .accessibilityAction(named: "Open full screen") { viewer.open([item.id], showsActions: false) }
     }
 
@@ -168,6 +203,16 @@ struct DeckView: View {
                 .foregroundStyle(Theme.Palette.textPrimary)
                 .disabled(!session.canUndo)
                 .accessibilityLabel("Undo")
+
+                if mode == .decide {
+                    Button { favorite() } label: {
+                        Image(systemName: "heart.fill").font(.headline).frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                    .accessibilityLabel("Keep and favorite")
+                }
 
                 Button { decide(.keep) } label: {
                     Image(systemName: "checkmark").font(.title2.weight(.semibold)).frame(width: 64, height: 64)
@@ -193,6 +238,12 @@ struct DeckView: View {
                     FinishStat(value: session.keptCount, label: "Kept", systemImage: "checkmark")
                     FinishStat(value: session.trashedCount, label: "Ready to Delete", systemImage: "trash.fill", red: true)
                 }
+                if session.favoritedCount > 0 {
+                    Label(session.favoritedCount == 1 ? "1 new favorite" : "\(session.favoritedCount) new favorites",
+                          systemImage: "heart.fill")
+                        .font(Theme.Typeface.bodyMedium)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                }
             }
             Text(mode == .train ? "Nothing was queued. Tap Update in Cleanup to refresh Maybe Delete with what Pictr learned."
                                 : "Nothing is deleted until you confirm in Ready to Delete.")
@@ -216,10 +267,10 @@ struct DeckView: View {
     }
 
     private func decide(_ decision: Decision) {
-        guard let item = session.current else { return }
-        if decision == .trash && item.isFavorite {
+        guard !isBusy, let item = session.current else { return }
+        if decision == .trash && (item.isFavorite || favoritedHere.contains(item.id)) {
             protectTick += 1
-            show("Favorites are protected")
+            show("Favorites are protected", systemImage: "heart.fill")
             withAnimation(.spring) { drag = .zero }
             return
         }
@@ -234,20 +285,65 @@ struct DeckView: View {
         }
         lastDecision = decision
         decisionTick += 1
+        isBusy = true
         let exit = CGSize(width: decision == .keep ? 600 : -600, height: drag.height)
         withAnimation(.easeOut(duration: 0.2)) { drag = exit }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
             session.decide(decision)
             drag = .zero
+            isBusy = false
+        }
+    }
+
+    /// Keeps the photo and marks it a favorite in Photos. Photos is asked first, since
+    /// the deck's copy of the flag can be stale, and the keep is only recorded once the
+    /// change is accepted.
+    private func favorite() {
+        guard mode == .decide, !isBusy, let item = session.current else { return }
+        isBusy = true
+        withAnimation(.easeOut(duration: 0.2)) { drag = CGSize(width: drag.width * 0.3, height: -700) }
+        let client = library.client, id = item.id
+        Task { @MainActor in
+            defer { isBusy = false }
+            let wasFavorite = await Task.detached(priority: .userInitiated) {
+                client.reviewItems(ids: [id]).first?.isFavorite ?? false
+            }.value
+            if !wasFavorite {
+                do {
+                    try await client.setFavorite(true, id: id)
+                } catch {
+                    show("Couldn't add to Favorites", systemImage: "exclamationmark.triangle.fill")
+                    withAnimation(.spring) { drag = .zero }
+                    return
+                }
+            }
+            favoritedHere.insert(id)
+            let previous = decisions.book.entry(for: id)
+            decisions.record(.keep, for: item)
+            undoRecords.append(previous)
+            lastDecision = .keep
+            decisionTick += 1
+            show(wasFavorite ? "Already a favorite" : "Added to Favorites", systemImage: "heart.fill")
+            // Only a favorite made here is undone by Undo.
+            session.decide(.keep, favorited: !wasFavorite)
+            drag = .zero
         }
     }
 
     private func undo() {
+        guard !isBusy else { return }
         switch mode {
         case .decide:
             guard let step = session.undo(), let previous = undoRecords.popLast() else { return }
             decisions.restore(step.item.id, to: previous)
+            if step.favorited {
+                // Stays protected until Photos confirms it is no longer a favorite.
+                let client = library.client, id = step.item.id
+                Task { @MainActor in
+                    if (try? await client.setFavorite(false, id: id)) != nil { favoritedHere.remove(id) }
+                }
+            }
         case .train:
             guard let step = session.undo(), let previous = undoTaste.popLast() else { return }
             decisions.restoreTaste(step.item.id, to: previous)
@@ -255,8 +351,8 @@ struct DeckView: View {
         drag = .zero
     }
 
-    private func show(_ text: String) {
-        withAnimation { notice = text }
+    private func show(_ text: String, systemImage: String) {
+        withAnimation { notice = Notice(text: text, systemImage: systemImage) }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             withAnimation { notice = nil }
@@ -276,6 +372,12 @@ struct PhotoCard: View {
     let drag: CGSize
     @Binding var isMuted: Bool
     var deleteLabel = "Delete"
+    var allowsFavorite = false
+
+    /// Mostly upward: the favorite gesture, not a sloppy keep or delete.
+    static func isFavoriteDrag(_ drag: CGSize) -> Bool {
+        drag.height < -30 && abs(drag.width) < -drag.height * 0.6
+    }
 
     @State private var image: UIImage?
     @State private var playerItem: AVPlayerItem?
@@ -395,7 +497,10 @@ struct PhotoCard: View {
     }
 
     @ViewBuilder private var stamp: some View {
-        if drag.width > 30 {
+        if allowsFavorite, Self.isFavoriteDrag(drag) {
+            stampLabel("Favorite", icon: "heart.fill", tint: nil)
+                .opacity(Double(min(-drag.height / 110, 1)))
+        } else if drag.width > 30 {
             stampLabel("Keep", icon: "checkmark", tint: nil)
                 .opacity(Double(min(drag.width / 110, 1)))
         } else if drag.width < -30 {

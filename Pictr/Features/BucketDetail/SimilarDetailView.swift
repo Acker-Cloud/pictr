@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Similar-shot sets. Each set's keeper is protected; the rest start selected.
+/// Similar-shot sets or exact duplicates. Each set's keeper is protected; the rest
+/// start selected.
 struct SimilarDetailView: View {
+    var kind: BucketKind = .similar
+
     @Environment(LibraryModel.self) private var model
     @Environment(DecisionsModel.self) private var decisions
     @Environment(ViewerPresenter.self) private var viewer
@@ -14,10 +17,10 @@ struct SimilarDetailView: View {
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
     private var cellPixels: CGSize { CGSize(width: 130 * displayScale, height: 130 * displayScale) }
 
-    private var bucketSet: BucketSet { model.buckets.excluding(decisions.book.decidedIDs) }
-    private var groups: [SimilarGroup] { bucketSet.similarGroups }
+    private var bucketSet: BucketSet { model.buckets.excluding(decisions.book.decidedIDs, queued: decisions.book.queuedIDs) }
+    private var groups: [SimilarGroup] { kind == .duplicates ? bucketSet.duplicateGroups : bucketSet.similarGroups }
     private var members: [String: BucketMember] {
-        Dictionary(bucketSet[.similar].members.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        Dictionary(bucketSet[kind].members.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     }
     private var extras: [BucketMember] { groups.flatMap(\.extraIDs).compactMap { members[$0] } }
     private func isSelected(_ id: String) -> Bool { chosen?.contains(id) ?? true }
@@ -27,7 +30,7 @@ struct SimilarDetailView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.x6) {
-                Text(BucketKind.similar.reason)
+                Text(kind.reason)
                     .font(Theme.Typeface.callout)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .padding(.horizontal, Theme.Space.x4)
@@ -35,7 +38,7 @@ struct SimilarDetailView: View {
                 ForEach(groups) { group in
                     VStack(alignment: .leading, spacing: Theme.Space.x2) {
                         HStack {
-                            Eyebrow("\(group.memberIDs.count) shots")
+                            Eyebrow("\(group.memberIDs.count) \(kind == .duplicates ? "copies" : "shots")")
                             Spacer()
                             Button("Compare", systemImage: "rectangle.split.1x2") { comparing = group }
                                 .font(Theme.Typeface.captionMedium)
@@ -48,12 +51,13 @@ struct SimilarDetailView: View {
                             ForEach(group.memberIDs, id: \.self) { id in
                                 if group.keeperIDs.contains(id) {
                                     KeeperCell(id: id, provider: thumbnails, pixels: cellPixels.width)
-                                        .onTapGesture { viewer.open(group.memberIDs, at: group.memberIDs.firstIndex(of: id) ?? 0) }
+                                        // Keepers are protected: look, but no delete from here.
+                                        .onTapGesture { viewer.open([id], showsActions: false) }
                                 } else if let member = members[id] {
                                     ThumbnailCell(member: member, isSelected: isSelected(id), showsSize: false,
                                                   provider: thumbnails, targetSize: cellPixels)
                                         .onTapGesture { toggle(id) }
-                                        .photoContextMenu(id: id, in: group.memberIDs, presenter: viewer,
+                                        .photoContextMenu(id: id, in: group.extraIDs, presenter: viewer,
                                                           decisions: decisions, provider: thumbnails)
                                 }
                             }
@@ -65,13 +69,13 @@ struct SimilarDetailView: View {
         }
         .background(PictrBackground())
         .toolbar(.hidden, for: .tabBar)
-        .navigationTitle(BucketKind.similar.title)
+        .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
         .settingsToolbar()
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: Theme.Space.x2) {
                 Button { reviewing = true } label: {
-                    Label("Review \(groups.flatMap(\.memberIDs).count)", systemImage: "rectangle.stack.fill")
+                    Label("Review \(extras.count)", systemImage: "rectangle.stack.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .secondaryGlassButton()
@@ -93,7 +97,7 @@ struct SimilarDetailView: View {
             .padding(Theme.Space.x4)
         }
         .navigationDestination(isPresented: $reviewing) {
-            BucketDeck(title: BucketKind.similar.title, ids: groups.flatMap(\.memberIDs))
+            BucketDeck(title: kind.title, ids: extras.map(\.id))
         }
         .sheet(item: $comparing) { group in
             CompareView(group: group)

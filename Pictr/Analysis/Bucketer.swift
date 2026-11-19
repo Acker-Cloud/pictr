@@ -40,10 +40,17 @@ enum Bucketer {
             return score < settings.lowQualityScore && !blurryIDs.contains($0.descriptor.id)
         }
 
+        // Exact copies belong to Duplicates; keeping them out of Similar means the two
+        // suggestions can never pick opposite keepers for the same file.
+        let duplicateGroups = DuplicateFinder.groups(in: assets)
+        let duplicateExtras = Set(duplicateGroups.flatMap(\.extraIDs))
+
         // Similar groups: hidden frames drop out, favorites stay as keepers.
         var groups: [SimilarGroup] = []
         for ids in similar {
-            let members = ids.filter { byID[$0].map { !$0.descriptor.isHidden } ?? false }
+            let members = ids.filter {
+                !duplicateExtras.contains($0) && (byID[$0].map { !$0.descriptor.isHidden } ?? false)
+            }
             guard members.count > 1 else { continue }
             let keepers = SimilarGrouper.keepers(
                 in: members,
@@ -55,6 +62,7 @@ enum Bucketer {
             if !group.extraIDs.isEmpty { groups.append(group) }
         }
         let similarMembers = groups.flatMap(\.extraIDs).compactMap { byID[$0] }
+        let duplicateMembers = duplicateGroups.flatMap(\.extraIDs).compactMap { byID[$0] }
 
         let eligibleIDs = Set(eligible.map(\.descriptor.id))
         let suggested = maybeDelete.filter { eligibleIDs.contains($0.id) }
@@ -62,6 +70,7 @@ enum Bucketer {
         return BucketSet(buckets: [
             Bucket(kind: .maybeDelete, members: suggested.compactMap { byID[$0.id] }.map(member)),
             Bucket(kind: .similar, members: similarMembers.map(member)),
+            Bucket(kind: .duplicates, members: duplicateMembers.map(member)),
             Bucket(kind: .screenshots, members: newestFirst(screenshots).map(member)),
             Bucket(kind: .burstExtras, members: newestFirst(burstExtras).map(member)),
             Bucket(kind: .blurry, members: blurry.sorted {
@@ -71,7 +80,7 @@ enum Bucketer {
             Bucket(kind: .utility, members: newestFirst(utility).map(member)),
             Bucket(kind: .largeVideos, members: largeVideos.map(member)),
             Bucket(kind: .screenRecordings, members: newestFirst(screenRecordings).map(member)),
-        ], similarGroups: groups, reasons: Dictionary(suggested.map { ($0.id, $0.reason) }, uniquingKeysWith: { a, _ in a }))
+        ], similarGroups: groups, duplicateGroups: duplicateGroups, reasons: Dictionary(suggested.map { ($0.id, $0.reason) }, uniquingKeysWith: { a, _ in a }))
     }
 
     /// Frames to suggest from each burst: everything except picks and the cover frame.

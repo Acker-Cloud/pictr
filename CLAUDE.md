@@ -48,9 +48,11 @@ regenerate after changes. Set `DEVELOPMENT_TEAM` there to sign with your own tea
 - Swift 6 language mode, strict concurrency, warnings as errors. iOS 26.0 target, iPhone only.
 - No third-party dependencies. No networking code. Analysis and thumbnails never request
   iCloud originals (`isNetworkAccessAllowed = false`). Only the full-screen viewer and deck
-  `ImageLoader` let Photos fetch from iCloud, for display.
+  `ImageLoader` let Photos fetch from iCloud, for display, and `exportOriginal`, for a share
+  the user started.
 - Never delete without Apple's system confirmation, and never auto-select suggestions
-  (Similar shots preselects extras only because the keeper is protected).
+  (Similar shots and Duplicates preselect extras only because each group's keeper is
+  protected).
 - Design: red-and-black Liquid Glass.
   - Background: the animated `PictrBackground` mesh, which holds still under Reduce Motion.
   - Surfaces: glass `Panel`, `GlassRow` and tile labels.
@@ -85,6 +87,10 @@ regenerate after changes. Set `DEVELOPMENT_TEAM` there to sign with your own tea
   read again.
 - In a TabView, every tab's toolbar stays loaded, so UI tests must pick the hittable
   `Settings` button, not `firstMatch`.
+- App Intents declare `supportedModes`; `openAppWhenRun` is deprecated in iOS 26 and warnings
+  are errors. Intents reach the UI only through `AppRouter.shared`.
+- Notification banners cover the top bar and swallow taps in `DeviceSmokeTests`. Turn on Do
+  Not Disturb and leave the phone alone while it runs.
 
 ## Shipping contract
 

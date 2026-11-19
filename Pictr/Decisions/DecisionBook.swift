@@ -103,6 +103,9 @@ struct DecisionBook: Sendable, Codable, Equatable {
 
     var decidedIDs: Set<String> { Set(records.keys) }
 
+    /// The queue as a set, without sorting.
+    var queuedIDs: Set<String> { Set(records.lazy.filter { $0.value.decision == .trash }.map(\.key)) }
+
     func decision(for id: String) -> Decision? { records[id]?.decision }
 
     func reviewedCount(in month: MonthKey) -> Int {

@@ -7,6 +7,7 @@ struct PictrApp: App {
     @State private var viewer = ViewerPresenter()
     @State private var reminder = DailyReminder()
     @State private var intelligence = AppleIntelligence()
+    @State private var router = AppRouter.shared
 
     init() {
         Theme.applyAppearance()
@@ -20,6 +21,7 @@ struct PictrApp: App {
                 .environment(viewer)
                 .environment(reminder)
                 .environment(intelligence)
+                .environment(router)
                 .tint(Theme.Palette.accent)
                 .preferredColorScheme(.dark)
                 .fontDesign(.default)

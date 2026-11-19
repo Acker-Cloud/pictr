@@ -58,4 +58,8 @@ protocol PhotoLibraryClient: Sendable {
 
     /// One system-confirmed delete batch. A user cancel returns `.cancelled`.
     func delete(ids: [String]) async throws -> DeleteOutcome
+
+    /// Writes the original file (the edited version when there is one) to a temporary
+    /// file for sharing. The user asked for it, so this may fetch from iCloud.
+    func exportOriginal(id: String) async throws -> URL
 }

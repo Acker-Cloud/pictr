@@ -37,11 +37,13 @@
 ## What it does
 
 **Today.** Opens on photos taken on this date in earlier years, grouped by year, with your
-streak and today's count against a daily goal.
+streak and today's count against a daily goal. Widen it to the whole week around the date,
+or Shuffle a deck of random unreviewed photos from any year.
 
-**The deck.** Swipe right to keep, left to put a photo in Ready to Delete. Undo any swipe.
-Tap for a full-screen viewer with zoom, Live Photos, video and details. Favorites are
-protected and can never be queued.
+**The deck.** Swipe right to keep, left to put a photo in Ready to Delete, up to keep it and
+mark it a favorite in Photos. Undo any swipe. Share the original from the deck or the
+viewer. Tap for a full-screen viewer with zoom, Live Photos, video and details. Favorites
+are protected and can never be queued.
 
 **Lookback.** Your whole library grouped by day, week, month or year. Show it as a list,
 a photo grid or large cards; sort by date, size or what's left to review; hide what's
@@ -52,13 +54,16 @@ finished. Quick Select turns any period into a tap-to-pick grid.
 | Suggestion | How |
 |---|---|
 | Similar shots | Vision feature prints, grouped within 10 minutes; the best shot is kept and protected |
+| Duplicates | Exact copies: same pixel size, capture second, duration and file size; one copy is kept and protected |
 | Blurry | Laplacian sharpness checked against Vision's aesthetics score, at three sensitivities |
 | Low quality, documents and receipts | Vision aesthetics score and utility flag |
 | Screenshots, screen recordings, burst extras, large videos | Photo metadata |
 | Maybe Delete | Your own taste model, below |
 
 Compare similar shots side by side with Zoom Lock. Nothing is selected for you, and
-nothing is deleted until you confirm.
+nothing is deleted until you confirm. **What's taking space** breaks the Cleanup window down
+by kind and year, lists the largest items, and shows how much is on this iPhone and how much
+is only in iCloud.
 
 **It learns what you keep.** Every keep and delete, plus an optional short Teach deck,
 trains a small on-device model. It reads what each photo you've decided on shows (Vision's
@@ -70,8 +75,13 @@ turn it on, Apple Intelligence's on-device model sums that up in plain English.
 30 days. Space figures are honest: queued, moved to Recently Deleted and iCloud-only are
 reported separately, and Pictr never claims space is "freed".
 
+**Siri and Shortcuts.** "Review On This Day", "Shuffle", "Open Cleanup" and "Open Ready to
+Delete" open Pictr on that screen; "How many photos are ready to delete" answers without
+opening it.
+
 **And:** a daily On This Day reminder that only fires on days with photos, a Progress page
-(streaks, a 14-day chart, a Cleanup Plan goal, achievements, history), and four app icons.
+(streaks, a 14-day chart, a Cleanup Plan goal, achievements, history with CSV export), and
+four app icons.
 
 ## Privacy
 
@@ -81,7 +91,8 @@ Pictr is built so your photos cannot leave the phone:
 - **On-device models only.** Analysis uses Vision. The optional summary uses
   `SystemLanguageModel.default` and never Private Cloud Compute.
 - **Local thumbnails.** Analysis and thumbnails never ask iCloud for originals. Only the
-  full-screen viewer lets Photos fetch an iCloud original so you can see it.
+  full-screen viewer lets Photos fetch an iCloud original so you can see it, and Share
+  fetches one when you send a photo that is not on the iPhone.
 - **Never deletes on its own.** Every delete goes through Apple's system confirmation.
 - **What Pictr stores**, all in its own container: your decisions, classifier tags and
   feature prints for photos you've decided on (no images), and caches.

@@ -122,7 +122,7 @@ actor LibraryScanner {
         let base = currentBuckets()
         let similarExtras = Set(base.similarGroups.flatMap(\.extraIDs))
         let burstExtras = Bucketer.burstExtraIDs(in: Array(assets.values))
-        let keepers = Set(base.similarGroups.flatMap(\.keeperIDs))
+        let keepers = Set((base.similarGroups + base.duplicateGroups).flatMap(\.keeperIDs))
         let tallies = SubjectTaste.tallies(labels: labels, tags: traits.tags)
         let traits = traits
         func features(_ asset: ScannedAsset) -> (x: [Double], subject: SubjectTaste.Score) {
@@ -189,6 +189,10 @@ actor LibraryScanner {
         guard pool.count > count else { return pool.map(\.id) }
         let step = Double(pool.count) / Double(count)
         return (0..<count).map { pool[Int(Double($0) * step)].id }
+    }
+
+    func insights() -> LibraryInsights {
+        LibraryInsights.make(from: Array(assets.values))
     }
 
     private func analysisCandidates() -> [String] {

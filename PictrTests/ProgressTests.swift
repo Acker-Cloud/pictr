@@ -90,6 +90,21 @@ private func item(_ id: String, favorite: Bool = false) -> ReviewItem {
     }
 }
 
+@Suite struct HistoryExportTests {
+    @Test func csvHasAHeaderAndOneRowPerCleanup() {
+        var book = DecisionBook()
+        book.queue(ids: ["a", "b"])
+        book.finishApply(queued: ["a", "b"], submitted: ["a", "b"], bytes: 1_500, at: day(2026, 11, 2, hour: 9))
+        book.queue(ids: ["c"])
+        book.finishApply(queued: ["c"], submitted: ["c"], bytes: 20, at: day(2026, 11, 3, hour: 18))
+        #expect(book.historyCSV() == "date,items,bytes\n2026-11-02T09:00:00Z,2,1500\n2026-11-03T18:00:00Z,1,20\n")
+    }
+
+    @Test func emptyHistoryIsJustTheHeader() {
+        #expect(DecisionBook().historyCSV() == "date,items,bytes\n")
+    }
+}
+
 @Suite struct AchievementTests {
     @Test func unlocksByThreshold() {
         let stats = ProgressStats(reviewed: 120, kept: 100, queued: 0, movedCount: 20, movedBytes: 2_000_000_000,

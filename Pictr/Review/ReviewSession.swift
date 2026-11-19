@@ -10,6 +10,8 @@ struct ReviewSession: Sendable {
     struct Step: Sendable, Equatable {
         var item: ReviewItem
         var decision: Decision
+        /// A keep that also marked the photo a favorite in Photos.
+        var favorited = false
     }
 
     let items: [ReviewItem]
@@ -26,11 +28,12 @@ struct ReviewSession: Sendable {
     var canUndo: Bool { !history.isEmpty }
     var keptCount: Int { history.filter { $0.decision == .keep }.count }
     var trashedCount: Int { history.filter { $0.decision == .trash }.count }
+    var favoritedCount: Int { history.filter(\.favorited).count }
 
     @discardableResult
-    mutating func decide(_ decision: Decision) -> Step? {
+    mutating func decide(_ decision: Decision, favorited: Bool = false) -> Step? {
         guard let item = current else { return nil }
-        let step = Step(item: item, decision: decision)
+        let step = Step(item: item, decision: decision, favorited: favorited)
         history.append(step)
         index += 1
         return step

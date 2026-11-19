@@ -12,6 +12,7 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @AppStorage(Prefs.dailyGoal) private var dailyGoal = 50
     @AppStorage(Prefs.batchSize) private var batchSize = 0
+    @AppStorage(Prefs.rangeKey) private var range: OnThisDayRange = .day
     @State private var confirmsReset = false
 
     private let windows = [30, 90, 365, 0]
@@ -54,10 +55,15 @@ struct SettingsView: View {
                         } label: {
                             RowLabel("Photos per deck", systemImage: "rectangle.stack.fill")
                         }
+                        Picker(selection: $range) {
+                            ForEach(OnThisDayRange.allCases) { Text($0.title).tag($0) }
+                        } label: {
+                            RowLabel("On This Day shows", systemImage: "sun.horizon.fill")
+                        }
                     } header: {
                         SectionLabel("Reviewing")
                     } footer: {
-                        Text("A shorter deck is easier to finish. Open it again to pick up where you stopped.")
+                        Text("A shorter deck is easier to finish. Open it again to pick up where you stopped. This week shows the seven days around today's date in every earlier year. In a deck, swipe up to keep a photo and mark it a favorite.")
                     }
 
                     Section {

@@ -29,6 +29,9 @@ final class DeviceSmokeTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5), "Settings from Today")
         sleep(1); shot("settings")
         XCTAssertTrue(app.buttons["Ember icon"].exists, "App icon picker in Settings")
+        let range = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'On This Day shows'")).firstMatch
+        for _ in 0..<3 where !range.exists { app.swipeUp() }
+        XCTAssertTrue(range.exists, "On This Day range picker in Settings")
         let learned = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'What Pictr has learned'")).firstMatch
         for _ in 0..<3 where !learned.exists { app.swipeUp() }
         if learned.waitForExistence(timeout: 3) {
@@ -44,8 +47,10 @@ final class DeviceSmokeTests: XCTestCase {
         for _ in 0..<8 where !source.exists { app.swipeUp() }
         XCTAssertTrue(source.exists, "Open source links in Settings")
         for label in ["Pictr home page", "Privacy Policy", "Terms of Use", "Help", "MIT License"] {
-            XCTAssertTrue(app.links.matching(NSPredicate(format: "label BEGINSWITH %@", label)).firstMatch.exists,
-                          "\(label) link in Settings")
+            // The list is lazy: the last rows exist only once scrolled into view.
+            let link = app.links.matching(NSPredicate(format: "label BEGINSWITH %@", label)).firstMatch
+            for _ in 0..<3 where !link.exists { app.swipeUp() }
+            XCTAssertTrue(link.exists, "\(label) link in Settings")
         }
         sleep(1); shot("settings-about")
         app.buttons["Done"].tap()
@@ -89,15 +94,30 @@ final class DeviceSmokeTests: XCTestCase {
         if review.waitForExistence(timeout: 3) {
             review.tap()
             sleep(2); shot("deck")
+            XCTAssertTrue(app.buttons["Keep and favorite"].waitForExistence(timeout: 5), "Favorite button in the deck")
+            XCTAssertTrue(app.buttons["Share"].firstMatch.exists, "Share in the deck")
             let card = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Photo'")).firstMatch
             if card.waitForExistence(timeout: 5) {
                 card.tap()
                 XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5), "Viewer from deck card")
+                XCTAssertTrue(app.buttons["Share"].firstMatch.exists, "Share in the viewer")
                 sleep(1); shot("viewer")
                 app.buttons["Close"].tap()
             }
             sleep(1)
             back(app)
+        }
+
+        // Today: Shuffle opens a random deck (read-only: nothing is swiped)
+        let shuffle = app.buttons["Start Shuffle"]
+        for _ in 0..<3 where !shuffle.isHittable { app.swipeUp() }
+        if shuffle.waitForExistence(timeout: 5) {
+            shuffle.tap()
+            XCTAssertTrue(app.navigationBars["Shuffle"].waitForExistence(timeout: 10), "Shuffle deck")
+            sleep(2); shot("shuffle")
+            back(app)
+        } else {
+            XCTFail("No Shuffle on Today")
         }
 
         // Months: open a month, Quick Select
@@ -148,9 +168,21 @@ final class DeviceSmokeTests: XCTestCase {
             back(app)
         }
 
-        // Cleanup: Settings
+        // Cleanup: Duplicates tile, What's taking space
         app.tabBars.buttons["Cleanup"].tap()
         sleep(2); shot("cleanup")
+        let insights = app.buttons["insights-link"]
+        if insights.waitForExistence(timeout: 5) {
+            insights.tap()
+            XCTAssertTrue(app.navigationBars["What's taking space"].waitForExistence(timeout: 5), "Insights page")
+            sleep(2); shot("insights")
+            back(app)
+        } else {
+            XCTFail("No What's taking space link in Cleanup")
+        }
+        let duplicates = app.buttons["Duplicates"]
+        for _ in 0..<4 where !duplicates.exists { app.swipeUp() }
+        XCTAssertTrue(duplicates.exists, "Duplicates suggestion in Cleanup")
 
         // Ready to Delete: tap a photo opens the viewer
         app.tabBars.buttons["Ready to Delete"].tap()

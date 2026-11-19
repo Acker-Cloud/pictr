@@ -89,6 +89,10 @@ final class LibraryModel {
         tasteSummary = await scanner.summary(labels: labels)
     }
 
+    func insights() async -> LibraryInsights {
+        await scanner.insights()
+    }
+
     func trainingItems(labels: [String: Bool], count: Int = 24) async -> [ReviewItem] {
         let ids = await scanner.trainingCandidates(count: count, labels: labels)
         let client = client

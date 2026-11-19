@@ -48,5 +48,16 @@ private func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
     @Test func bodyCountsPhotos() {
         #expect(ReminderPlan.body(photoCount: 1) == "1 photo from this day in past years is waiting.")
         #expect(ReminderPlan.body(photoCount: 12) == "12 photos from this day in past years are waiting.")
+        #expect(ReminderPlan.body(photoCount: 3, range: .week) == "3 photos from this week in past years are waiting.")
+    }
+
+    @Test func weekRangeCountsTheWholeWeek() {
+        var seen: [DateInterval] = []
+        _ = ReminderPlan.entries(from: day(2026, 11, 14), days: 1, hour: 9, minute: 0,
+                                 earliestYear: 2025, range: .week, calendar: utc) { windows in
+            seen = windows
+            return 1
+        }
+        #expect(seen == [DateInterval(start: day(2025, 11, 12), duration: 7 * 86_400)])
     }
 }
