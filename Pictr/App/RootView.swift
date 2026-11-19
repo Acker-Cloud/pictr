@@ -45,5 +45,14 @@ struct RootView: View {
         .fullScreenCover(item: Binding(get: { viewer.request }, set: { viewer.request = $0 })) { request in
             PhotoViewer(request: request)
         }
+        // Here, not on one tab, so a failed delete shows whichever tab started it.
+        .alert("Couldn't delete", isPresented: Binding(
+            get: { model.deleteError != nil },
+            set: { if !$0 { model.deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.deleteError ?? "")
+        }
     }
 }

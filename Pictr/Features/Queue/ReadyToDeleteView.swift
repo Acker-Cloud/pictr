@@ -93,10 +93,12 @@ struct ReadyToDeleteView: View {
 
     private func load() async {
         let ids = decisions.book.queue
-        guard !ids.isEmpty else { members = []; return }
+        guard !ids.isEmpty else { members = []; loading = false; return }
         loading = true
         let client = library.client
         let found = await Task.detached(priority: .userInitiated) { client.members(for: ids) }.value
+        // A newer load started when the queue changed; this one's result is out of date.
+        guard !Task.isCancelled else { return }
         // Keep queue order.
         let byID = Dictionary(found.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         members = ids.compactMap { byID[$0] }
@@ -105,9 +107,18 @@ struct ReadyToDeleteView: View {
     }
 
     private func apply() async {
-        let queued = decisions.book.queue
-        guard case let .deleted(submitted)? = await library.delete(members) else { return }
-        let bytes = members.filter { submitted.contains($0.id) }.reduce(0) { $0 + $1.size.bytes }
-        decisions.finishApply(queued: queued, submitted: submitted, bytes: bytes)
+        let batch = members
+        let outcome = await library.delete(batch) { decisions.book.queuedIDs }
+        // A favorite never stays queued, however it got there.
+        decisions.unqueue(decisions.book.queue.filter { library.knownFavorites[$0] == true })
+        guard case let .deleted(submitted)? = outcome else { return }
+        let bytes = batch.filter { submitted.contains($0.id) }.reduce(0) { $0 + $1.size.bytes }
+        // Clear what was deleted and what Photos no longer has. Anything taken back or
+        // queued while Apple's sheet was up stays as it is.
+        let queue = decisions.book.queue
+        let client = library.client
+        let present = await Task.detached(priority: .userInitiated) { Set(client.members(for: queue).map(\.id)) }.value
+        let settled = queue.filter { submitted.contains($0) || !present.contains($0) }
+        decisions.finishApply(queued: settled, submitted: submitted, bytes: bytes)
     }
 }

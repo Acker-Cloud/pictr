@@ -108,6 +108,14 @@ struct BucketSet: Sendable, Equatable {
     var cloudOnlyBytes: Int64 {
         uniqueMembers.filter { $0.availability == .cloudOnly }.reduce(0) { $0 + $1.size.bytes }
     }
+
+    /// The Duplicates or Similar shots set a photo belongs to, so a deck can offer to compare
+    /// it. Exact copies come first. Call on a set already passed through `excluding`.
+    func lookalikes(of id: String) -> (kind: BucketKind, group: SimilarGroup)? {
+        if let group = duplicateGroups.first(where: { $0.memberIDs.contains(id) }) { return (.duplicates, group) }
+        if let group = similarGroups.first(where: { $0.memberIDs.contains(id) }) { return (.similar, group) }
+        return nil
+    }
 }
 
 extension BucketSet {

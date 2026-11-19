@@ -29,9 +29,10 @@ struct DeckView: View {
     /// True while a card flies off or a favorite is being written. Every action waits,
     /// so a fast second tap can't land on the card that is leaving.
     @State private var isBusy = false
-    /// Favorites made or confirmed in this deck. The items' own flags were read at load
-    /// and go stale, and favorites must never be queued.
-    @State private var favoritedHere: Set<String> = []
+    /// The Duplicates or Similar shots set opened from the current card. `comparison` drives
+    /// the sheet; `openComparison` outlives it so dismissing can see what changed.
+    @State private var comparison: Comparison?
+    @State private var openComparison: Comparison?
     @State private var loader = ImageLoader()
     @State private var thumbnails = ThumbnailProvider()
     @State private var isMuted = true
@@ -42,6 +43,13 @@ struct DeckView: View {
     private struct Notice: Equatable {
         var text: String
         var systemImage: String
+    }
+
+    private struct Comparison: Identifiable {
+        let id = UUID()
+        let group: SimilarGroup
+        let itemID: String
+        let previous: DecisionBook.Record?
     }
 
     /// -1 past the delete threshold, 1 past keep, 2 past favorite, 0 between. Drives a selection tick.
@@ -109,6 +117,9 @@ struct DeckView: View {
             lastDecision == .trash ? .impact(weight: .medium) : .impact(flexibility: .soft)
         }
         .sensoryFeedback(.warning, trigger: protectTick)
+        .sheet(item: $comparison, onDismiss: finishComparing) { comparison in
+            CompareView(group: comparison.group, startID: comparison.itemID)
+        }
     }
 
     private var targetSize: CGSize {
@@ -153,9 +164,22 @@ struct DeckView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The item with its favorite flag as Pictr knows it now, not as it was at load.
+    private func current(_ item: ReviewItem) -> ReviewItem {
+        var item = item
+        item.isFavorite = library.isFavorite(item)
+        return item
+    }
+
     private func card(for item: ReviewItem) -> some View {
-        PhotoCard(item: item, today: today, loader: loader, targetSize: targetSize, drag: drag, isMuted: $isMuted,
-                  deleteLabel: mode == .train ? "Would delete" : "Delete", allowsFavorite: mode == .decide)
+        PhotoCard(item: current(item), today: today, loader: loader, targetSize: targetSize, drag: drag,
+                  isMuted: $isMuted, deleteLabel: mode == .train ? "Would delete" : "Delete",
+                  allowsFavorite: mode == .decide)
+            .overlay(alignment: .topTrailing) {
+                if mode == .decide {
+                    LookalikeButton(id: item.id) { group in compare(group, for: item) }.equatable()
+                }
+            }
             .id(item.id)
             .onTapGesture {
                 if item.mediaKind == .video { isMuted.toggle() } else { viewer.open([item.id], showsActions: false) }
@@ -267,8 +291,9 @@ struct DeckView: View {
     }
 
     private func decide(_ decision: Decision) {
-        guard !isBusy, let item = session.current else { return }
-        if decision == .trash && (item.isFavorite || favoritedHere.contains(item.id)) {
+        guard !isBusy, let snapshot = session.current else { return }
+        let item = current(snapshot)
+        if decision == .trash && item.isFavorite {
             protectTick += 1
             show("Favorites are protected", systemImage: "heart.fill")
             withAnimation(.spring) { drag = .zero }
@@ -303,22 +328,19 @@ struct DeckView: View {
         guard mode == .decide, !isBusy, let item = session.current else { return }
         isBusy = true
         withAnimation(.easeOut(duration: 0.2)) { drag = CGSize(width: drag.width * 0.3, height: -700) }
-        let client = library.client, id = item.id
+        let id = item.id
         Task { @MainActor in
             defer { isBusy = false }
-            let wasFavorite = await Task.detached(priority: .userInitiated) {
-                client.reviewItems(ids: [id]).first?.isFavorite ?? false
-            }.value
+            let wasFavorite = await library.refreshFavorite(id: id)
             if !wasFavorite {
                 do {
-                    try await client.setFavorite(true, id: id)
+                    try await library.setFavorite(true, id: id)
                 } catch {
                     show("Couldn't add to Favorites", systemImage: "exclamationmark.triangle.fill")
                     withAnimation(.spring) { drag = .zero }
                     return
                 }
             }
-            favoritedHere.insert(id)
             let previous = decisions.book.entry(for: id)
             decisions.record(.keep, for: item)
             undoRecords.append(previous)
@@ -339,15 +361,43 @@ struct DeckView: View {
             decisions.restore(step.item.id, to: previous)
             if step.favorited {
                 // Stays protected until Photos confirms it is no longer a favorite.
-                let client = library.client, id = step.item.id
-                Task { @MainActor in
-                    if (try? await client.setFavorite(false, id: id)) != nil { favoritedHere.remove(id) }
-                }
+                let id = step.item.id
+                Task { @MainActor in try? await library.setFavorite(false, id: id) }
             }
         case .train:
             guard let step = session.undo(), let previous = undoTaste.popLast() else { return }
             decisions.restoreTaste(step.item.id, to: previous)
         }
+        drag = .zero
+    }
+
+    private func compare(_ group: SimilarGroup, for item: ReviewItem) {
+        guard !isBusy, session.current?.id == item.id else { return }
+        let opened = Comparison(group: group, itemID: item.id, previous: decisions.book.entry(for: item.id))
+        openComparison = opened
+        comparison = opened
+    }
+
+    /// If the card was queued from its set, the deck moves on as if it were swiped left,
+    /// and Undo takes it back out of Ready to Delete.
+    private func finishComparing() {
+        guard let opened = openComparison else { return }
+        openComparison = nil
+        guard mode == .decide, let item = session.current, item.id == opened.itemID,
+              opened.previous?.decision != .trash,
+              decisions.book.decision(for: item.id) == .trash else { return }
+        // Recorded as this card's decision, so it counts toward today and Undo takes it back.
+        // A favorite can't be: it leaves the queue and the card stays.
+        guard decisions.record(.trash, for: current(item)) else {
+            decisions.unqueue([item.id])
+            protectTick += 1
+            show("Favorites are protected", systemImage: "heart.fill")
+            return
+        }
+        undoRecords.append(opened.previous)
+        lastDecision = .trash
+        decisionTick += 1
+        session.decide(.trash)
         drag = .zero
     }
 
@@ -571,5 +621,36 @@ private struct FinishStat: View {
         .glassEffect(.regular.tint(Theme.Palette.accent.opacity(red ? 0.18 : 0.06)),
                      in: RoundedRectangle(cornerRadius: Theme.Radius.glass, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// On a deck card that belongs to a Duplicates or Similar shots set: opens the set to
+/// compare side by side without leaving the deck. Equatable on the ID alone, so dragging
+/// the card doesn't recompute the sets every frame.
+private struct LookalikeButton: View, Equatable {
+    let id: String
+    let open: (SimilarGroup) -> Void
+
+    @Environment(LibraryModel.self) private var library
+    @Environment(DecisionsModel.self) private var decisions
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+
+    var body: some View {
+        let sets = library.buckets.excluding(decisions.book.decidedIDs, queued: decisions.book.queuedIDs)
+        if let match = sets.lookalikes(of: id) {
+            let others = match.group.memberIDs.count - 1
+            let title = match.kind == .duplicates ? (others == 1 ? "1 copy" : "\(others) copies") : "\(others) similar"
+            Button { open(match.group) } label: {
+                Label(title, systemImage: match.kind.systemImage)
+                    .font(Theme.Typeface.captionMedium)
+                    .padding(.horizontal, Theme.Space.x1).padding(.vertical, 2)
+            }
+            .buttonStyle(.glass)
+            .foregroundStyle(Theme.Palette.textPrimary)
+            .padding(Theme.Space.x4)
+            .accessibilityLabel(match.kind == .duplicates ? "\(title) of this photo" : "\(title) shots")
+            .accessibilityHint("Compares them side by side")
+        }
     }
 }

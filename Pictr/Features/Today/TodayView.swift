@@ -5,6 +5,7 @@ struct TodayView: View {
     @Environment(LibraryModel.self) private var library
     @Environment(DecisionsModel.self) private var decisions
     @Environment(AppRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
     @State private var items: [ReviewItem]?
     @State private var showsShuffle = false
     @State private var day = Calendar.current.startOfDay(for: .now)
@@ -52,6 +53,10 @@ struct TodayView: View {
             .background(PictrBackground())
             .refreshable { await load() }
             .task { if items == nil { await load() } }
+            .onChange(of: scenePhase) { _, phase in
+                // Resumed on a later day: show that day, not the one Pictr was left on.
+                if phase == .active, Calendar.current.startOfDay(for: .now) != day { Task { await load() } }
+            }
             .onChange(of: range) { Task { await load() } }
             .onChange(of: router.pendingShuffle, initial: true) { _, pending in
                 guard pending else { return }

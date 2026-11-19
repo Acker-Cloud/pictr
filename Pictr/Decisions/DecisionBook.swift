@@ -127,7 +127,13 @@ struct DecisionBook: Sendable, Codable, Equatable {
         }
     }
 
+    /// Undo: puts back the earlier record and takes back the day's count the undone
+    /// decision added, so swipe, undo, swipe is one decision.
     mutating func restore(_ id: String, to record: Record?) {
+        if let undone = records[id], undone != record {
+            let day = Self.dayKey(undone.decidedAt)
+            if let count = activity[day], count > 0 { activity[day] = count - 1 }
+        }
         records[id] = record
     }
 

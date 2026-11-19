@@ -71,6 +71,22 @@ private func copy(_ id: String, at seconds: TimeInterval = 1_000_000, bytes: Int
         #expect(set[.duplicates].members.map(\.id) == ["b"])
     }
 
+    @Test func lookalikesFindTheSetAPhotoIsIn() {
+        let other = scanned(FakeAsset(id: "z", creationDate: date(1_000_030), resources: [
+            ResourceRecord(kind: .photo, byteCount: 3_000_000, isLocallyAvailable: true),
+        ]), bytes: 3_000_000)
+        let set = Bucketer.buckets(for: [copy("a"), copy("b"), other, copy("y", bytes: 5)], similar: [["a", "b", "z"]])
+        // Exact copies win over look-alikes.
+        #expect(set.lookalikes(of: "b")?.kind == .duplicates)
+        #expect(set.lookalikes(of: "b")?.group.memberIDs == ["a", "b"])
+        #expect(set.lookalikes(of: "a")?.kind == .duplicates)
+        #expect(set.lookalikes(of: "z")?.kind == .similar)
+        #expect(set.lookalikes(of: "z")?.group.memberIDs.contains("a") == true)
+        #expect(set.lookalikes(of: "y") == nil)
+        // A set whose keeper is queued protects nothing, so the deck offers nothing.
+        #expect(set.excluding(["a"], queued: ["a"]).lookalikes(of: "b") == nil)
+    }
+
     @Test func keeperIsFavoriteThenEditedThenLowestID() {
         let edited = DuplicateFinder.groups(in: [copy("a"), copy("b", edited: true), copy("c")])
         #expect(edited.first?.keeperIDs == ["b"])

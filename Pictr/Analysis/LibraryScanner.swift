@@ -24,6 +24,9 @@ actor LibraryScanner {
     private(set) var taste = TasteModel.prior
     private let traitsURL: URL?
     private var traits: TraitStore
+    /// False while the saved traits couldn't be read. They are read again before anything
+    /// uses or saves them, so a store read while locked never overwrites the real one.
+    private var traitsLoaded: Bool
     /// Most decided photos read per learning pass, so one pass stays a few minutes at most.
     static let learnLimit = 2_000
 
@@ -34,7 +37,24 @@ actor LibraryScanner {
         self.client = client
         self.sizer = sizer
         self.traitsURL = traitsURL
-        self.traits = TraitStore.load(from: traitsURL)
+        let saved = TraitStore.load(from: traitsURL)
+        self.traits = saved ?? TraitStore()
+        self.traitsLoaded = saved != nil
+    }
+
+    /// Reads the saved traits if an earlier read failed. True once they are in memory.
+    @discardableResult
+    private func loadTraitsIfNeeded() -> Bool {
+        guard !traitsLoaded else { return true }
+        guard let saved = TraitStore.load(from: traitsURL) else { return false }
+        traits.merge(saved)
+        traitsLoaded = true
+        return true
+    }
+
+    private func saveTraits() {
+        guard loadTraitsIfNeeded() else { return }
+        traits.save(to: traitsURL)
     }
 
     static func windowStart(days: Int = windowDays, now: Date = .now, calendar: Calendar = .current) -> Date {
@@ -73,19 +93,21 @@ actor LibraryScanner {
             progress(ScanProgress(completed: index + 1, total: pending.count))
         }
         regroup()
-        traits.save(to: traitsURL)
+        saveTraits()
         return currentBuckets()
     }
 
     /// Decided photos that learning has not read yet.
     func unlearnedCount(labels: [String: Bool]) -> Int {
-        min(labels.keys.filter { traits.tags[$0] == nil }.count, Self.learnLimit)
+        loadTraitsIfNeeded()
+        return min(labels.keys.filter { traits.tags[$0] == nil }.count, Self.learnLimit)
     }
 
     /// Reads what each decided photo shows and how it looks, wherever it is in the
     /// library, so swipes in Today and Months teach as much as recent ones.
     /// Cancellable; finished photos are kept and skipped next time.
     func learn(labels: [String: Bool], prune: Bool = true, progress: @Sendable (ScanProgress) -> Void) async {
+        loadTraitsIfNeeded()
         let pending = Array(labels.keys.filter { traits.tags[$0] == nil }.sorted().prefix(Self.learnLimit))
         for (index, id) in pending.enumerated() {
             if Task.isCancelled { break }
@@ -97,28 +119,32 @@ actor LibraryScanner {
                 // Gone or only in iCloud: remember the attempt so it isn't retried every pass.
                 traits.tags[id] = [:]
             }
-            if (index + 1) % 100 == 0 { traits.save(to: traitsURL) }
+            if (index + 1) % 100 == 0 { saveTraits() }
             progress(ScanProgress(completed: index + 1, total: pending.count))
         }
         if prune { traits.prune(keeping: Set(labels.keys).union(assets.keys)) }
-        traits.save(to: traitsURL)
+        saveTraits()
     }
 
     func summary(labels: [String: Bool]) -> TasteSummary {
-        TasteSummary(labels: labels, tags: traits.tags)
+        loadTraitsIfNeeded()
+        return TasteSummary(labels: labels, tags: traits.tags)
     }
 
     func resetLearning() {
         traits = TraitStore()
+        // A deliberate wipe: nothing saved should come back.
+        traitsLoaded = true
         for (id, print) in prints { traits.prints[id] = print }
         taste = .prior
         maybeDelete = []
-        traits.save(to: traitsURL)
+        saveTraits()
     }
 
     /// Trains on the labels for photos in the window, then snapshots Maybe Delete.
     /// Suggestions only change when this is called.
     func suggestMaybeDelete(labels: [String: Bool]) -> BucketSet {
+        loadTraitsIfNeeded()
         let base = currentBuckets()
         let similarExtras = Set(base.similarGroups.flatMap(\.extraIDs))
         let burstExtras = Bucketer.burstExtraIDs(in: Array(assets.values))

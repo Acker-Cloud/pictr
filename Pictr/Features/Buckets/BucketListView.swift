@@ -91,14 +91,6 @@ struct BucketListView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await model.refreshAccess() } }
             }
-            .alert("Couldn't delete", isPresented: Binding(
-                get: { model.deleteError != nil },
-                set: { if !$0 { model.deleteError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(model.deleteError ?? "")
-            }
         }
     }
 

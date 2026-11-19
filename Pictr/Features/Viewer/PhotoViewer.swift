@@ -171,7 +171,7 @@ struct PhotoViewer: View {
         guard var item = current else { return }
         let newValue = !item.isFavorite
         do {
-            try await library.client.setFavorite(newValue, id: item.id)
+            try await library.setFavorite(newValue, id: item.id)
             item.isFavorite = newValue
             items[item.id] = item
             // A favorite is protected, so it can't stay queued.
@@ -354,7 +354,8 @@ private struct ViewerInfo: View {
 extension View {
     /// Long-press pop-up for any thumbnail: a large preview plus the common actions.
     func photoContextMenu(id: String, in ids: [String], presenter: ViewerPresenter,
-                          decisions: DecisionsModel, provider: ThumbnailProvider) -> some View {
+                          decisions: DecisionsModel, provider: ThumbnailProvider,
+                          isFavorite: Bool = false) -> some View {
         contextMenu {
             Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") {
                 // Presenting while the menu is still animating away is dropped; wait it out.
@@ -366,7 +367,7 @@ extension View {
             Button("Keep", systemImage: "checkmark.circle") { decisions.markKept(id) }
             if decisions.book.decision(for: id) == .trash {
                 Button("Remove from Ready to Delete", systemImage: "arrow.uturn.backward") { decisions.unqueue([id]) }
-            } else {
+            } else if !isFavorite {
                 Button("Add to Ready to Delete", systemImage: "trash", role: .destructive) { decisions.queue(ids: [id]) }
             }
         } preview: {

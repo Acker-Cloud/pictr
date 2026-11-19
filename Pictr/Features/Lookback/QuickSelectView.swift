@@ -6,6 +6,7 @@ struct QuickSelectView: View {
     let items: [ReviewItem]
 
     @Environment(DecisionsModel.self) private var decisions
+    @Environment(LibraryModel.self) private var library
     @Environment(ViewerPresenter.self) private var viewer
     @Environment(\.displayScale) private var displayScale
     @Environment(\.dismiss) private var dismiss
@@ -13,9 +14,18 @@ struct QuickSelectView: View {
     @State private var thumbnails = ThumbnailProvider()
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 4)
-    private var shown: [ReviewItem] { items.filter { decisions.book.decision(for: $0.id) == nil } }
+    /// Undecided items, with favorites as Pictr knows them now: one can be made in the viewer
+    /// after it was selected here.
+    private var shown: [ReviewItem] {
+        items.filter { decisions.book.decision(for: $0.id) == nil }.map { item in
+            var item = item
+            item.isFavorite = library.isFavorite(item)
+            return item
+        }
+    }
     private var selectable: [ReviewItem] { shown.filter { !$0.isFavorite } }
-    private var others: [ReviewItem] { shown.filter { !selected.contains($0.id) } }
+    private var chosen: [ReviewItem] { selectable.filter { selected.contains($0.id) } }
+    private var others: [ReviewItem] { shown.filter { $0.isFavorite || !selected.contains($0.id) } }
     private var allSelected: Bool { !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) } }
 
     var body: some View {
@@ -32,7 +42,7 @@ struct QuickSelectView: View {
                     cell(item)
                         .onTapGesture { toggle(item) }
                         .photoContextMenu(id: item.id, in: shown.map(\.id), presenter: viewer,
-                                          decisions: decisions, provider: thumbnails)
+                                          decisions: decisions, provider: thumbnails, isFavorite: item.isFavorite)
                 }
             }
         }
@@ -98,19 +108,19 @@ struct QuickSelectView: View {
         GlassEffectContainer(spacing: Theme.Space.x2) {
             VStack(spacing: Theme.Space.x2) {
                 Button {
-                    for item in shown where selected.contains(item.id) { decisions.record(.trash, for: item) }
+                    for item in chosen { decisions.record(.trash, for: item) }
                     selected = []
                 } label: {
-                    Text("Add \(selected.count) to Ready to Delete").frame(maxWidth: .infinity)
+                    Text("Add \(chosen.count) to Ready to Delete").frame(maxWidth: .infinity)
                 }
                 .primaryGlassButton()
-                .disabled(selected.isEmpty)
+                .disabled(chosen.isEmpty)
 
                 Button {
                     for item in others { decisions.record(.keep, for: item) }
-                    if selected.isEmpty { dismiss() }
+                    if chosen.isEmpty { dismiss() }
                 } label: {
-                    Text(selected.isEmpty ? "Keep all \(others.count)" : "Keep the other \(others.count)")
+                    Text(chosen.isEmpty ? "Keep all \(others.count)" : "Keep the other \(others.count)")
                         .frame(maxWidth: .infinity)
                 }
                 .secondaryGlassButton()

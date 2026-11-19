@@ -139,6 +139,8 @@ private struct KeeperCell: View {
 /// moves both, so details line up.
 struct CompareView: View {
     let group: SimilarGroup
+    /// The shot to show first under the keeper, such as the deck card it was opened from.
+    var startID: String?
 
     @Environment(DecisionsModel.self) private var decisions
     @Environment(\.dismiss) private var dismiss
@@ -150,8 +152,9 @@ struct CompareView: View {
     @State private var bottom = ZoomState()
 
     private var keeper: String { group.memberIDs.first { group.keeperIDs.contains($0) } ?? group.memberIDs[0] }
+    /// Every keeper is protected, not only the one on top: a set with two favorites has two.
     private var others: [String] {
-        group.memberIDs.filter { $0 != keeper && decisions.book.decision(for: $0) == nil }
+        group.memberIDs.filter { !group.keeperIDs.contains($0) && $0 != keeper && decisions.book.decision(for: $0) == nil }
     }
 
     var body: some View {
@@ -180,6 +183,9 @@ struct CompareView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+        }
+        .onAppear {
+            if let startID, let start = others.firstIndex(of: startID) { otherIndex = start }
         }
     }
 

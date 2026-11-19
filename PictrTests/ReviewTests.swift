@@ -181,6 +181,19 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         #expect(book.streak(endingOn: today) == 0)
     }
 
+    @Test func undoTakesBackTheDayCount() {
+        var book = DecisionBook()
+        let today = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_800_000_000))
+        let at = today.addingTimeInterval(3600)
+        book.record(.keep, for: item("a"), at: at)
+        book.restore("a", to: nil)
+        #expect(book.reviewedCount(on: today) == 0)
+        #expect(book.streak(endingOn: today) == 0)
+        // Swipe, undo, swipe again is one decision, not two.
+        book.record(.trash, for: item("a"), at: at)
+        #expect(book.reviewedCount(on: today) == 1)
+    }
+
     @Test func decodesBooksWrittenBeforeActivityExisted() throws {
         let legacy = #"{"records":{},"applied":[]}"#.data(using: .utf8)!
         let book = try JSONDecoder().decode(DecisionBook.self, from: legacy)

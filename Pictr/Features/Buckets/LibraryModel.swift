@@ -51,10 +51,53 @@ final class LibraryModel {
     /// Bucket selections survive leaving and reopening a bucket.
     var selections: [BucketKind: Set<String>] = [:]
 
+    /// Favorite flags changed in Pictr, or read fresh from Photos, since screens loaded their
+    /// items. Decks and grids hold snapshots, and a favorite must never be queued, so they ask
+    /// `isFavorite(_:)` instead of trusting the snapshot.
+    private(set) var knownFavorites: [String: Bool] = [:]
+
+    func isFavorite(_ item: ReviewItem) -> Bool { knownFavorites[item.id] ?? item.isFavorite }
+
+    /// The only way Pictr changes a favorite, so every open screen sees it.
+    func setFavorite(_ isFavorite: Bool, id: String) async throws {
+        try await client.setFavorite(isFavorite, id: id)
+        knownFavorites[id] = isFavorite
+    }
+
+    /// Photos is the truth: a favorite changed anywhere, in Pictr or in Photos, replaces what
+    /// was remembered. Only favorites and IDs already remembered are kept, so a big sync
+    /// doesn't fill this up.
+    private func noteFavorites(from delta: LibraryDelta) async {
+        switch delta {
+        case let .incremental(_, upserted):
+            for asset in upserted where asset.isFavorite || knownFavorites[asset.id] != nil {
+                knownFavorites[asset.id] = asset.isFavorite
+            }
+        case .reload:
+            let ids = Array(knownFavorites.keys)
+            guard !ids.isEmpty else { return }
+            let client = client
+            let fresh = await Task.detached(priority: .utility) { client.reviewItems(ids: ids) }.value
+            for item in fresh { knownFavorites[item.id] = item.isFavorite }
+        }
+    }
+
+    /// Asks Photos directly and remembers the answer.
+    func refreshFavorite(id: String) async -> Bool {
+        let client = client
+        let value = await Task.detached(priority: .userInitiated) {
+            client.reviewItems(ids: [id]).first?.isFavorite ?? false
+        }.value
+        knownFavorites[id] = value
+        return value
+    }
+
     /// Reads any decided photos not seen yet, then rebuilds Maybe Delete.
     /// Stopping keeps what was read and still updates from it.
     func updateSuggestions(labels: [String: Bool]) async {
-        guard learnTask == nil else { return }
+        // `learning` is set before the first await, so a second tap can't start a second pass.
+        guard learnTask == nil, learning == nil else { return }
+        learning = ScanProgress(completed: 0, total: 0)
         learning = ScanProgress(completed: 0, total: await scanner.unlearnedCount(labels: labels))
         let task = Task { [weak self] in
             guard let self else { return }
@@ -207,6 +250,7 @@ final class LibraryModel {
         Task { [weak self, changes = client.changes] in
             for await delta in changes {
                 guard let self else { return }
+                await self.noteFavorites(from: delta)
                 if let updated = await self.scanner.apply(delta) {
                     self.buckets = updated
                 } else {
@@ -218,13 +262,26 @@ final class LibraryModel {
 
     /// One system-confirmed batch. The bucket list updates from the change observer.
     @discardableResult
-    func delete(_ members: [BucketMember]) async -> DeleteOutcome? {
+    /// Deletes what is still queued once learning has read it, after Apple's confirmation.
+    /// Favorites are never deleted, however they were queued; they are noted in
+    /// `knownFavorites` so the caller can take them out of the queue.
+    func delete(_ members: [BucketMember], stillQueued: () -> Set<String>) async -> DeleteOutcome? {
         guard !members.isEmpty, !isDeleting else { return nil }
         isDeleting = true
         defer { isDeleting = false }
         // Deleted photos can't be read later; capture what learning needs first.
         await scanner.learn(labels: Dictionary(members.map { ($0.id, true) }, uniquingKeysWith: { a, _ in a }),
                             prune: false) { _ in }
+        // That can take a while. Anything taken back or made a favorite meanwhile stays.
+        let client = client
+        let ids = members.map(\.id)
+        let favorites = await Task.detached(priority: .userInitiated) {
+            Set(client.reviewItems(ids: ids).filter(\.isFavorite).map(\.id))
+        }.value
+        for id in favorites { knownFavorites[id] = true }
+        let queued = stillQueued()
+        let members = members.filter { queued.contains($0.id) && !favorites.contains($0.id) }
+        guard !members.isEmpty else { return .deleted([]) }
         ledger.queue(members)
         do {
             let outcome = try await client.delete(ids: members.map(\.id))

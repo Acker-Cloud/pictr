@@ -14,16 +14,25 @@ struct TraitStore: Codable, Sendable {
             .appending(path: "taste-traits.json")
     }
 
-    static func load(from url: URL?) -> TraitStore {
-        guard let url, let data = try? Data(contentsOf: url),
-              let store = try? JSONDecoder().decode(TraitStore.self, from: data)
-        else { return TraitStore() }
-        return store
+    /// Nil when a saved store exists but can't be read yet, such as before the first unlock
+    /// after a restart. Starting empty then would let the next save overwrite it.
+    static func load(from url: URL?) -> TraitStore? {
+        guard let url, FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return TraitStore() }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONDecoder().decode(TraitStore.self, from: data)) ?? TraitStore()
     }
 
     func save(to url: URL?) {
         guard let url, let data = try? JSONEncoder().encode(self) else { return }
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        // Readable once the iPhone has been unlocked since it started, so a Shortcut or
+        // Siri request that wakes Pictr on a locked phone still finds it.
+        try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    /// Adds saved entries this store doesn't have yet; its own entries win.
+    mutating func merge(_ saved: TraitStore) {
+        tags.merge(saved.tags) { mine, _ in mine }
+        prints.merge(saved.prints) { mine, _ in mine }
     }
 
     /// Drops photos that are neither decided nor in the current window.

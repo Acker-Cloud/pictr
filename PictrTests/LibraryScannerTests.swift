@@ -105,3 +105,41 @@ final class Locked<Value>: @unchecked Sendable {
         set { lock.withLock { _value = newValue } }
     }
 }
+
+@Suite struct TraitStoreTests {
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory.appending(path: "traits-\(UUID().uuidString).json")
+    }
+
+    @Test func missingFileStartsEmpty() {
+        #expect(TraitStore.load(from: tempURL())?.tags.isEmpty == true)
+    }
+
+    @Test func savedStoreReadsBack() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        var store = TraitStore()
+        store.tags["a"] = ["dog": 0.9]
+        store.save(to: url)
+        #expect(TraitStore.load(from: url)?.tags["a"] == ["dog": 0.9])
+    }
+
+    @Test func unreadableStoreIsNotTreatedAsEmpty() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        var store = TraitStore()
+        store.tags["a"] = ["dog": 0.9]
+        store.save(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: url.path(percentEncoded: false))
+        #expect(TraitStore.load(from: url) == nil)
+    }
+
+    @Test func mergeAddsSavedEntriesAndKeepsNewerOnes() {
+        var saved = TraitStore()
+        saved.tags = ["a": ["dog": 0.9], "b": ["cat": 0.5]]
+        var current = TraitStore()
+        current.tags = ["b": ["cat": 0.8]]
+        current.merge(saved)
+        #expect(current.tags == ["a": ["dog": 0.9], "b": ["cat": 0.8]])
+    }
+}
