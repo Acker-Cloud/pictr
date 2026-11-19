@@ -231,10 +231,13 @@ struct ZoomState: Equatable {
     var lastOffset: CGSize = .zero
 }
 
-private struct ZoomPane: View {
+/// One zoomable photo. At fit scale, a horizontal swipe calls `onSwipe` with +1 for
+/// the next shot and -1 for the previous; zoomed in, the same drag pans.
+struct ZoomPane: View {
     let id: String
     let loader: ImageLoader
     @Binding var state: ZoomState
+    var onSwipe: ((Int) -> Void)?
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
 
@@ -267,7 +270,13 @@ private struct ZoomPane: View {
                             state.offset = CGSize(width: state.lastOffset.width + value.translation.width,
                                                   height: state.lastOffset.height + value.translation.height)
                         }
-                        .onEnded { _ in state.lastOffset = state.offset })
+                        .onEnded { value in
+                            state.lastOffset = state.offset
+                            let move = value.translation
+                            if state.scale <= 1, abs(move.width) > 60, abs(move.width) > abs(move.height) {
+                                onSwipe?(move.width < 0 ? 1 : -1)
+                            }
+                        })
             )
             .onTapGesture(count: 2) {
                 withAnimation(Theme.Motion.slow) {

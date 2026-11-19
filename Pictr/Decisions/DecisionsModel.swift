@@ -35,6 +35,12 @@ final class DecisionsModel {
         return accepted
     }
 
+    /// Several decisions with one write, for a compare.
+    func record(_ pairs: [(Decision, ReviewItem)]) {
+        for (decision, item) in pairs { book.record(decision, for: item) }
+        save()
+    }
+
     func restore(_ id: String, to record: DecisionBook.Record?) {
         book.restore(id, to: record)
         save()

@@ -10,7 +10,8 @@ enum DeckMode: Equatable {
 }
 
 /// Swipe deck: right keeps, left queues for deletion (or, in training, marks
-/// "would delete"), undo walks back.
+/// "would delete"), undo walks back. When the top card starts a burst, Compare
+/// opens the whole moment side by side to keep the best.
 struct DeckView: View {
     let title: String
     let items: [ReviewItem]
@@ -21,8 +22,10 @@ struct DeckView: View {
     @Environment(ViewerPresenter.self) private var viewer
     @Environment(\.displayScale) private var displayScale
     @State private var session: ReviewSession
-    @State private var undoRecords: [DecisionBook.Record?] = []
-    @State private var undoTaste: [Decision?] = []
+    /// One entry per session action; a compare restores its whole moment.
+    @State private var undoRecords: [[DecisionBook.Record?]] = []
+    @State private var undoTaste: [[Decision?]] = []
+    @State private var comparing: MomentRequest?
     @State private var drag: CGSize = .zero
     @State private var notice: String?
     @State private var loader = ImageLoader()
@@ -38,6 +41,16 @@ struct DeckView: View {
     }
 
     private static let swipeThreshold: CGFloat = 110
+
+    struct MomentRequest: Identifiable {
+        var items: [ReviewItem]
+        var id: String { items.first?.id ?? "" }
+    }
+
+    /// The burst the top card starts, among what's left in this deck.
+    private var moment: [ReviewItem] {
+        Array(session.items[Moment.run(in: session.items, from: session.index)])
+    }
     @Environment(\.dismiss) private var dismiss
 
     init(title: String, items: [ReviewItem], today: Date = .now, mode: DeckMode = .decide) {
@@ -84,6 +97,9 @@ struct DeckView: View {
             lastDecision == .trash ? .impact(weight: .medium) : .impact(flexibility: .soft)
         }
         .sensoryFeedback(.warning, trigger: protectTick)
+        .fullScreenCover(item: $comparing) { request in
+            PickBestView(items: request.items, mode: mode) { decideMoment(request.items, $0) }
+        }
     }
 
     private var targetSize: CGSize {
@@ -127,6 +143,7 @@ struct DeckView: View {
     private func card(for item: ReviewItem) -> some View {
         PhotoCard(item: item, today: today, loader: loader, targetSize: targetSize, drag: drag, isMuted: $isMuted,
                   deleteLabel: mode == .train ? "Would delete" : "Delete")
+            .overlay(alignment: .topTrailing) { compareButton }
             .id(item.id)
             .onTapGesture {
                 if item.mediaKind == .video { isMuted.toggle() } else { viewer.open([item.id], showsActions: false) }
@@ -146,6 +163,27 @@ struct DeckView: View {
             .accessibilityAction(named: "Keep") { decide(.keep) }
             .accessibilityAction(named: "Delete") { decide(.trash) }
             .accessibilityAction(named: "Open full screen") { viewer.open([item.id], showsActions: false) }
+            .accessibilityActions {
+                if moment.count > 1 {
+                    Button("Compare \(moment.count) shots from this moment") { comparing = MomentRequest(items: moment) }
+                }
+            }
+    }
+
+    @ViewBuilder private var compareButton: some View {
+        let shots = moment
+        if shots.count > 1 {
+            Button { comparing = MomentRequest(items: shots) } label: {
+                Label("Compare \(shots.count)", systemImage: "rectangle.split.1x2")
+                    .font(Theme.Typeface.captionMedium)
+            }
+            .buttonStyle(.glass)
+            .foregroundStyle(Theme.Palette.textPrimary)
+            .padding(Theme.Space.x4)
+            .opacity(drag == .zero ? 1 : 0)
+            .allowsHitTesting(drag == .zero)
+            .accessibilityHidden(true)
+        }
     }
 
     private var controls: some View {
@@ -227,9 +265,9 @@ struct DeckView: View {
         case .decide:
             let previous = decisions.book.entry(for: item.id)
             decisions.record(decision, for: item)
-            undoRecords.append(previous)
+            undoRecords.append([previous])
         case .train:
-            undoTaste.append(decisions.book.taste[item.id])
+            undoTaste.append([decisions.book.taste[item.id]])
             decisions.recordTaste(decision, for: item.id)
         }
         lastDecision = decision
@@ -243,14 +281,35 @@ struct DeckView: View {
         }
     }
 
-    private func undo() {
+    /// A compare's verdict: one decision per shot, applied and undone as one action.
+    private func decideMoment(_ items: [ReviewItem], _ verdict: [Decision]) {
+        // The deck can't have moved while the cover was up, but don't trust that blindly.
+        guard verdict.count == items.count, Array(session.items.dropFirst(session.index).prefix(items.count)) == items
+        else { return }
         switch mode {
         case .decide:
-            guard let step = session.undo(), let previous = undoRecords.popLast() else { return }
-            decisions.restore(step.item.id, to: previous)
+            undoRecords.append(items.map { decisions.book.entry(for: $0.id) })
+            decisions.record(Array(zip(verdict, items)))
         case .train:
-            guard let step = session.undo(), let previous = undoTaste.popLast() else { return }
-            decisions.restoreTaste(step.item.id, to: previous)
+            undoTaste.append(items.map { decisions.book.taste[$0.id] })
+            for (decision, item) in zip(verdict, items) { decisions.recordTaste(decision, for: item.id) }
+        }
+        session.decide(batch: verdict)
+        lastDecision = verdict.contains(.trash) ? .trash : .keep
+        decisionTick += 1
+        drag = .zero
+    }
+
+    private func undo() {
+        let steps = session.undo()
+        guard !steps.isEmpty else { return }
+        switch mode {
+        case .decide:
+            guard let previous = undoRecords.popLast() else { return }
+            for (step, record) in zip(steps, previous) { decisions.restore(step.item.id, to: record) }
+        case .train:
+            guard let previous = undoTaste.popLast() else { return }
+            for (step, decision) in zip(steps, previous) { decisions.restoreTaste(step.item.id, to: decision) }
         }
         drag = .zero
     }

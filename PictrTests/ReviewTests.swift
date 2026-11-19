@@ -53,7 +53,33 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         #expect(session.current?.id == "c")
         #expect(session.keptCount == 1 && session.trashedCount == 1)
         let undone = session.undo()
-        #expect(undone == .init(item: item("b"), decision: .trash))
+        #expect(undone == [.init(item: item("b"), decision: .trash)])
+        #expect(session.current?.id == "b")
+    }
+
+    @Test func batchDecidesAsOneActionAndUndoesWhole() {
+        var session = ReviewSession(items: [item("a"), item("b"), item("c"), item("d")])
+        session.decide(.keep)
+        let steps = session.decide(batch: [.trash, .keep])
+        #expect(steps.map(\.item.id) == ["b", "c"])
+        #expect(session.current?.id == "d")
+        #expect(session.keptCount == 2 && session.trashedCount == 1)
+
+        let undone = session.undo()
+        #expect(undone.map(\.item.id) == ["b", "c"])
+        #expect(undone.map(\.decision) == [.trash, .keep])
+        #expect(session.current?.id == "b")
+        #expect(session.undo().map(\.item.id) == ["a"])
+        #expect(!session.canUndo)
+        #expect(session.undo().isEmpty)
+    }
+
+    @Test func batchStopsAtTheEndOfTheDeck() {
+        var session = ReviewSession(items: [item("a"), item("b")])
+        session.decide(.keep)
+        #expect(session.decide(batch: [.trash, .trash, .trash]).map(\.item.id) == ["b"])
+        #expect(session.isFinished)
+        #expect(session.undo().count == 1)
         #expect(session.current?.id == "b")
     }
 
@@ -150,5 +176,43 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         book.record(.trash, for: item("a", date: day(2024, 5, 1)))
         let data = try JSONEncoder().encode(book)
         #expect(try JSONDecoder().decode(DecisionBook.self, from: data) == book)
+    }
+}
+
+@Suite struct MomentTests {
+    private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    private func at(_ id: String, _ seconds: TimeInterval?) -> ReviewItem {
+        item(id, date: seconds.map { t0.addingTimeInterval($0) })
+    }
+
+    @Test func groupsShotsTakenInQuickSuccession() {
+        let items = [at("a", 0), at("b", 30), at("c", 140), at("d", 900), at("e", 905)]
+        #expect(Moment.run(in: items, from: 0) == 0..<3)
+        #expect(Moment.run(in: items, from: 1) == 1..<3)
+        #expect(Moment.run(in: items, from: 3) == 3..<5)
+    }
+
+    @Test func gapIsBetweenNeighboursNotFromTheFirstShot() {
+        // Each shot 100s after the last: 300s end to end, still one moment.
+        let items = [at("a", 0), at("b", 100), at("c", 200), at("d", 300)]
+        #expect(Moment.run(in: items, from: 0) == 0..<4)
+    }
+
+    @Test func worksInEitherDirection() {
+        let items = [at("a", 60), at("b", 30), at("c", 0)]
+        #expect(Moment.run(in: items, from: 0) == 0..<3)
+    }
+
+    @Test func undatedShotsAndBoundsStandAlone() {
+        let items = [at("a", 0), at("b", nil), at("c", 10)]
+        #expect(Moment.run(in: items, from: 0) == 0..<1)
+        #expect(Moment.run(in: items, from: 1) == 1..<2)
+        #expect(Moment.run(in: items, from: 3) == 3..<3)
+    }
+
+    @Test func capsLongBursts() {
+        let items = (0..<10).map { at("\($0)", TimeInterval($0)) }
+        #expect(Moment.run(in: items, from: 0, maxCount: 4) == 0..<4)
+        #expect(Moment.run(in: items, from: 4, maxCount: 4) == 4..<8)
     }
 }
