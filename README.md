@@ -79,6 +79,10 @@ reported separately, and Pictr never claims space is "freed".
 Delete" open Pictr on that screen; "How many photos are ready to delete" answers without
 opening it.
 
+**Widget.** On This Day for the Home Screen (small and medium) and the Lock Screen: today's
+count, a photo from today, your streak and what waits in Ready to Delete. It moves to the next
+day at midnight and opens Today when tapped.
+
 **And:** a daily On This Day reminder that only fires on days with photos, a Progress page
 (streaks, a 14-day chart, a Cleanup Plan goal, achievements, history with CSV export), and
 four app icons.
@@ -95,7 +99,10 @@ Pictr is built so your photos cannot leave the phone:
   fetches one when you send a photo that is not on the iPhone.
 - **Never deletes on its own.** Every delete goes through Apple's system confirmation.
 - **What Pictr stores**, all in its own container: your decisions, classifier tags and
-  feature prints for photos you've decided on (no images), and caches.
+  feature prints for photos you've decided on (no images), and caches. For the widget it also
+  keeps a few counts and one small copy of a photo from today in a container shared only with
+  its own widget, on this iPhone. The widget never reads your library, and it hides the photo
+  while the iPhone is locked.
 
 ## Build
 

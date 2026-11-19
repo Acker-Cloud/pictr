@@ -39,6 +39,12 @@ regenerate after changes. Set `DEVELOPMENT_TEAM` there to sign with your own tea
 - `LibraryScanner` (actor) owns sized assets, analysis and learning traits off the main
   actor. `LibraryModel` (@MainActor @Observable) drives the UI.
 - Buckets update from the change observer after a delete, never by local mutation.
+- Widget: `PictrWidget` never imports Photos. `WidgetPublisher` writes `WidgetFeed`
+  (`Shared/`, compiled into both) and one small local JPEG to the App Group
+  `group.cloud.acker.pictr` when Today loads, and refreshes the stats when Pictr goes to the
+  background. Taps open `pictr://today`, routed by `AppRouter.destination(for:)`.
+- Bundle ID is `cloud.acker.pictr.app` (widget `.app.widget`): `cloud.acker.pictr` belongs to
+  another account and can't carry the App Group.
 - Learning: `TraitStore` (Application Support) keeps classifier tags and feature prints for
   decided photos. `SubjectTaste` and `LookalikeTaste` turn them into two features of the
   logistic `TasteModel`.

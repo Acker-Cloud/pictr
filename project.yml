@@ -24,10 +24,14 @@ targets:
     platform: iOS
     sources:
       - Pictr
+      - Shared
+    dependencies:
+      - target: PictrWidget
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr.app
         INFOPLIST_FILE: Pictr/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Pictr/App/Pictr.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Pictr
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
@@ -36,6 +40,22 @@ targets:
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown"
+
+  PictrWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - PictrWidget
+      - Shared
+      # Geist and DM Sans, registered by the widget's own UIAppFonts.
+      - path: Pictr/Resources/Fonts
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.acker.pictr.app.widget
+        INFOPLIST_FILE: PictrWidget/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Pictr
+        CODE_SIGN_ENTITLEMENTS: PictrWidget/PictrWidget.entitlements
 
   PictrTests:
     type: bundle.unit-test

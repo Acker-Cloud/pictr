@@ -120,5 +120,7 @@ struct ReadyToDeleteView: View {
         let present = await Task.detached(priority: .userInitiated) { Set(client.members(for: queue).map(\.id)) }.value
         let settled = queue.filter { submitted.contains($0) || !present.contains($0) }
         decisions.finishApply(queued: settled, submitted: submitted, bytes: bytes)
+        // A deleted photo must not stay on the widget.
+        WidgetPublisher.publishStats(from: decisions)
     }
 }

@@ -254,6 +254,9 @@ struct TodayView: View {
                 return ly == ry ? l < r : ly > ry
             }
         }.value
+        // Not awaited: the deck is ready now, and pull to refresh shouldn't wait on the widget.
+        let loaded = items ?? []
+        Task { await WidgetPublisher.publish(today: loaded, range: range, client: client, decisions: decisions) }
     }
 }
 

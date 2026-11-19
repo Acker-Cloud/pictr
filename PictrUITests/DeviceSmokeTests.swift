@@ -185,8 +185,8 @@ final class DeviceSmokeTests: XCTestCase {
         XCTAssertTrue(duplicates.exists, "Duplicates suggestion in Cleanup")
         // A duplicate's deck card offers its copies; Compare opens and closes. Nothing is queued.
         if duplicates.exists {
-            app.swipeUp()  // clear the tab bar
-            duplicates.tap()
+            // Its top edge clears the tab bar; scrolling would minimize the tab bar instead.
+            duplicates.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
             let review = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Review'")).firstMatch
             if review.waitForExistence(timeout: 5) {
                 review.tap()
@@ -205,8 +205,10 @@ final class DeviceSmokeTests: XCTestCase {
                 XCTFail("No Review in Duplicates")
             }
             back(app)
-            // Scrolling down minimized the tab bar; back at the top it shows every tab again.
-            app.swipeDown(); app.swipeDown()
+        }
+        // A minimized tab bar shows only the current tab; tapping it brings the others back.
+        if !app.tabBars.buttons["Ready to Delete"].exists {
+            app.tabBars.buttons.matching(NSPredicate(format: "value == 'Collapsed'")).firstMatch.tap()
         }
 
         // Ready to Delete: tap a photo opens the viewer

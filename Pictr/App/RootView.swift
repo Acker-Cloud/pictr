@@ -29,9 +29,12 @@ struct RootView: View {
             }
         }
         .task { await model.start() }
+        .onOpenURL { router.open($0) }
         .onChange(of: scenePhase, initial: true) { _, phase in
             // Woken earlier while locked: read saved decisions now that they can be read.
             if phase == .active { decisions.reloadIfNeeded() }
+            // The widget's streak, today's count and queue follow what happened here.
+            if phase == .background { WidgetPublisher.publishStats(from: decisions) }
         }
         .alert(decisions.problem?.title ?? "", isPresented: Binding(
             get: { decisions.problem != nil },

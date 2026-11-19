@@ -17,7 +17,7 @@ final class DecisionsModel {
     @ObservationIgnored private let fileURL: URL?
     /// False while a saved book exists but can't be read, such as when Pictr was woken before
     /// the first unlock. Nothing is saved over it until it has been read and folded in.
-    @ObservationIgnored private var isLoaded: Bool
+    @ObservationIgnored private(set) var isLoaded: Bool
     @ObservationIgnored private var saveFailing = false
     @ObservationIgnored private var unsavedReported = false
     private nonisolated static let writeQueue = DispatchQueue(label: "cloud.acker.pictr.decisions", qos: .utility)

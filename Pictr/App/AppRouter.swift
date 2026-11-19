@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 enum AppTab: Hashable {
@@ -18,5 +19,25 @@ final class AppRouter {
     func open(_ tab: AppTab, shuffle: Bool = false) {
         self.tab = tab
         if shuffle { pendingShuffle = true }
+    }
+
+    struct Destination: Equatable {
+        var tab: AppTab
+        var shuffle: Bool
+    }
+
+    /// Widget taps arrive as pictr://today or pictr://shuffle.
+    nonisolated static func destination(for url: URL) -> Destination? {
+        guard url.scheme == "pictr" else { return nil }
+        switch url.host() {
+        case "today": return Destination(tab: .today, shuffle: false)
+        case "shuffle": return Destination(tab: .today, shuffle: true)
+        default: return nil
+        }
+    }
+
+    func open(_ url: URL) {
+        guard let destination = Self.destination(for: url) else { return }
+        open(destination.tab, shuffle: destination.shuffle)
     }
 }
