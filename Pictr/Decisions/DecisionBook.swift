@@ -38,6 +38,16 @@ struct DecisionBook: Sendable, Codable, Equatable {
         deleted = try container.decodeIfPresent(Set<String>.self, forKey: .deleted) ?? []
     }
 
+    /// Folds in a book that couldn't be read at launch. What happened since wins.
+    mutating func absorb(_ saved: DecisionBook) {
+        records.merge(saved.records) { mine, _ in mine }
+        taste.merge(saved.taste) { mine, _ in mine }
+        activity.merge(saved.activity, uniquingKeysWith: +)
+        applied = saved.applied + applied
+        deleted.formUnion(saved.deleted)
+        plan = plan ?? saved.plan
+    }
+
     mutating func startPlan(targetBytes: Int64, at date: Date = .now) {
         plan = CleanupPlan(targetBytes: targetBytes, startedAt: date)
     }

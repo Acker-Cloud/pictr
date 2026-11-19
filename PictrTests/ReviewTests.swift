@@ -194,6 +194,24 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         #expect(book.reviewedCount(on: today) == 1)
     }
 
+    @Test func absorbFoldsInALateBookAndRecentWins() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        var saved = DecisionBook()
+        saved.record(.trash, for: item("a"), at: day)
+        saved.record(.keep, for: item("b"), at: day)
+        saved.startPlan(targetBytes: 100, at: day)
+        saved.finishApply(queued: [], submitted: ["x"], bytes: 5, at: day)
+        var current = DecisionBook()
+        current.record(.keep, for: item("a"), at: day)
+        current.absorb(saved)
+        #expect(current.decision(for: "a") == .keep)
+        #expect(current.decision(for: "b") == .keep)
+        #expect(current.reviewedCount(on: day) == 3)
+        #expect(current.applied.map(\.count) == [1])
+        #expect(current.plan?.targetBytes == 100)
+        #expect(current.deleted == ["x"])
+    }
+
     @Test func decodesBooksWrittenBeforeActivityExisted() throws {
         let legacy = #"{"records":{},"applied":[]}"#.data(using: .utf8)!
         let book = try JSONDecoder().decode(DecisionBook.self, from: legacy)
@@ -205,5 +223,117 @@ private func item(_ id: String, favorite: Bool = false, date: Date? = nil) -> Re
         book.record(.trash, for: item("a", date: day(2024, 5, 1)))
         let data = try JSONEncoder().encode(book)
         #expect(try JSONDecoder().decode(DecisionBook.self, from: data) == book)
+    }
+}
+
+@MainActor @Suite struct DecisionsFileTests {
+    private func freshDirectory() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "decisions-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func write(_ ids: [String], to url: URL) throws {
+        var book = DecisionBook()
+        for id in ids { book.record(.keep, for: item(id)) }
+        try JSONEncoder().encode(book).write(to: url)
+    }
+
+    @Test func missingFileStartsFresh() throws {
+        let url = try freshDirectory().appending(path: "decisions.json")
+        let model = DecisionsModel(fileURL: url)
+        #expect(model.book.records.isEmpty)
+        #expect(model.problem == nil)
+        model.markKept("a")
+        DecisionsModel.waitForWrites()
+        #expect(DecisionsModel.savedBook(at: url).decision(for: "a") == .keep)
+    }
+
+    @Test func corruptFileIsSetAsideNotOverwritten() throws {
+        let dir = try freshDirectory()
+        let url = dir.appending(path: "decisions.json")
+        try Data("not json".utf8).write(to: url)
+        let model = DecisionsModel(fileURL: url)
+        #expect(model.book.records.isEmpty)
+        #expect(model.problem != nil)
+        let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path(percentEncoded: false))
+            .filter { $0.hasPrefix("decisions-unreadable") }
+        #expect(kept.count == 1)
+        let keptData = try kept.first.map { try Data(contentsOf: dir.appending(path: $0)) }
+        #expect(keptData == Data("not json".utf8))
+    }
+
+    @Test func unreadableFileIsNeverSavedOverAndFoldsBackIn() throws {
+        let url = try freshDirectory().appending(path: "decisions.json")
+        let path = url.path(percentEncoded: false)
+        try write(["a"], to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: path)
+        let model = DecisionsModel(fileURL: url)
+        #expect(model.book.records.isEmpty)
+        model.markKept("b")
+        DecisionsModel.waitForWrites()
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
+        // Still only what was there: the locked read didn't turn into an empty save.
+        #expect(DecisionsModel.savedBook(at: url).decision(for: "a") == .keep)
+        #expect(DecisionsModel.savedBook(at: url).decision(for: "b") == nil)
+        // Readable again: the next change folds the saved book in and keeps both.
+        model.markKept("c")
+        DecisionsModel.waitForWrites()
+        let saved = DecisionsModel.savedBook(at: url)
+        #expect(saved.decision(for: "a") == .keep)
+        #expect(saved.decision(for: "b") == .keep)
+        #expect(saved.decision(for: "c") == .keep)
+        #expect(model.book.decision(for: "a") == .keep)
+    }
+
+    @Test func fileFoundCorruptLaterIsSetAsideAndReported() throws {
+        let dir = try freshDirectory()
+        let url = dir.appending(path: "decisions.json")
+        let path = url.path(percentEncoded: false)
+        try Data("not json".utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: path)
+        let model = DecisionsModel(fileURL: url)
+        #expect(model.problem == nil)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
+        model.markKept("a")
+        DecisionsModel.waitForWrites()
+        #expect(model.problem != nil)
+        let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path(percentEncoded: false))
+            .filter { $0.hasPrefix("decisions-unreadable") }
+        #expect(kept.count == 1)
+        #expect(DecisionsModel.savedBook(at: url).decision(for: "a") == .keep)
+    }
+
+    @Test func corruptFileThatCantBeMovedIsNeverSavedOver() throws {
+        let dir = try freshDirectory()
+        let dirPath = dir.path(percentEncoded: false)
+        let url = dir.appending(path: "decisions.json")
+        try Data("not json".utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dirPath)
+        let model = DecisionsModel(fileURL: url)
+        model.markKept("a")
+        DecisionsModel.waitForWrites()
+        #expect(model.problem != nil)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dirPath)
+        // Once it can be moved, it is set aside first and only then saved over.
+        model.markKept("b")
+        DecisionsModel.waitForWrites()
+        let kept = try FileManager.default.contentsOfDirectory(atPath: dirPath).filter { $0.hasPrefix("decisions-unreadable") }
+        #expect(kept.count == 1)
+        let keptData = try kept.first.map { try Data(contentsOf: dir.appending(path: $0)) }
+        #expect(keptData == Data("not json".utf8))
+        let saved = DecisionsModel.savedBook(at: url)
+        #expect(saved.decision(for: "a") == .keep && saved.decision(for: "b") == .keep)
+    }
+
+    @Test func queueCountIsUnknownWhileUnreadable() throws {
+        let url = try freshDirectory().appending(path: "decisions.json")
+        #expect(DecisionsModel.savedQueueCount(at: url) == 0)
+        var book = DecisionBook()
+        book.queue(ids: ["a", "b"])
+        try JSONEncoder().encode(book).write(to: url)
+        #expect(DecisionsModel.savedQueueCount(at: url) == 2)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: url.path(percentEncoded: false))
+        #expect(DecisionsModel.savedQueueCount(at: url) == nil)
     }
 }

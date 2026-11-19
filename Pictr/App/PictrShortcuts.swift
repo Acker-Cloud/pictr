@@ -53,9 +53,17 @@ struct ReadyToDeleteCountIntent: AppIntent {
     static let title: LocalizedStringResource = "Ready to Delete Count"
     static let description: IntentDescription? = IntentDescription("Says how many photos wait in Ready to Delete.")
     static let supportedModes: IntentModes = .background
+    /// Saved decisions can't be read before the first unlock, and this is about your photos.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+
+    struct Unreadable: Error, CustomLocalizedStringResourceConvertible {
+        var localizedStringResource: LocalizedStringResource {
+            "Pictr can't read Ready to Delete right now. Open Pictr to check."
+        }
+    }
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
-        let count = DecisionsModel.savedBook().queue.count
+        guard let count = DecisionsModel.savedQueueCount() else { throw Unreadable() }
         let text = switch count {
         case 0: "Nothing is waiting in Ready to Delete."
         case 1: "1 photo is waiting in Ready to Delete. Nothing is deleted until you confirm."

@@ -30,6 +30,18 @@ struct RootView: View {
         }
         .task { await model.start() }
         .onChange(of: scenePhase, initial: true) { _, phase in
+            // Woken earlier while locked: read saved decisions now that they can be read.
+            if phase == .active { decisions.reloadIfNeeded() }
+        }
+        .alert(decisions.problem?.title ?? "", isPresented: Binding(
+            get: { decisions.problem != nil },
+            set: { if !$0 { decisions.problem = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(decisions.problem?.message ?? "")
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
             // Counts change as you review and as the date moves; re-plan on every foreground.
             guard phase == .active, reminder.isEnabled else { return }
             Task {
